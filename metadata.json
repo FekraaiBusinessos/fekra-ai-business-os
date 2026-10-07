@@ -1,0 +1,8 @@
+{
+  "name": "Remix  Fekra AI",
+  "description": "FEKRA AI Product Photo Studio is an AI-powered visual creation tool designed to transform ordinary product images into professional, high-quality visuals.\n\nUpload your product photo, choose your desired lighting, camera angle, perspective, background, and visual style, and let FEKRA AI intelligently enhance and recreate the image in seconds.\n\nCreate studio-quality product photography without expensive equipment, complicated editing, or professional photo shoots.\n\nUpload. Customize. Generate.\nTurn every product into a powerful visual.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
