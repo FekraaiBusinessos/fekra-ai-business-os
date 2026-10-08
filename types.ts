@@ -471,7 +471,7 @@ export interface ControllerStudioProject extends ProjectBase {
 export interface ImpossibleHandoffTimelineSegment {
   time: string;
   action: string;
-  camera: string;
+  camera?: string;
   dialogue?: string;
   visual?: string;
   transition?: string;

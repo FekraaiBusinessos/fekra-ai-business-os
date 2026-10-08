@@ -2744,6 +2744,7 @@ export function getDefaultImpossibleHandoffBlueprint(): ImpossibleHandoffBluepri
       {
         time: "3.0-4.5s",
         action: "The camera follows the flying emblem through the industrial passage. The emblem passes in front of the lens and briefly fills the entire frame.",
+        camera: "camera physically continues forward through the passage into a new adjacent environment",
         transition: "while the emblem completely occludes the lens, the camera physically continues forward through the passage into a new adjacent environment",
         important: "no digital morph, no teleportation, no arbitrary scene replacement"
       },
