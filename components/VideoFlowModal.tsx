@@ -13,6 +13,9 @@ import {
   optimizeFlowVideoPrompt, 
   analyzeAndBuildDirectorialFlowPrompt, 
   hasUserGeminiKey,
+  getUserGeminiKey,
+  setUserGeminiKey,
+  clearUserGeminiKey,
   getDefaultLipSyncScript,
   getDefaultSellingGestures,
   getDefaultViralCta,
@@ -24,8 +27,13 @@ import {
   getVideoQuotaStatus, 
   recordFlowVideoGenerated, 
   validateFlowVideoQuota, 
-  VideoQuotaStatus 
+  VideoQuotaStatus,
+  WHATSAPP_BETA_URL,
+  PRIMARY_WHATSAPP_PHONE,
+  SECONDARY_WHATSAPP_PHONE,
+  WHATSAPP_BOOKING_MESSAGE
 } from '../services/quotaGuard';
+import WhatsAppButton from './WhatsAppButton';
 import { saveStudioWork } from '../services/studioStorageService';
 import { getGoogleUser } from '../services/googleAuthService';
 import { resizeImage } from '../utils';
@@ -41,6 +49,7 @@ export interface VideoFlowModalProps {
   initialHyperSocialDNA?: HyperUniversalSocialDNA | null;
   onOpenSocialEngine?: (videoUrl: string, prompt: string) => void;
   onOpenQuotaModal?: () => void;
+  onVideoGenerated?: (videoUrl: string) => void;
 }
 
 const CAMERA_MOTIONS: Array<{
@@ -112,6 +121,7 @@ export const VideoFlowModal: React.FC<VideoFlowModalProps> = ({
   initialHyperSocialDNA = null,
   onOpenSocialEngine,
   onOpenQuotaModal,
+  onVideoGenerated,
 }) => {
   const [sourceImage, setSourceImage] = useState<ImageFile | null>(initialSourceImage);
   const [prompt, setPrompt] = useState(initialPrompt);
@@ -120,7 +130,10 @@ export const VideoFlowModal: React.FC<VideoFlowModalProps> = ({
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '16:9' | '1:1'>(initialAspectRatio);
   const [resolution, setResolution] = useState<'720p' | '1080p'>('720p');
   const [durationSeconds, setDurationSeconds] = useState<number>(5);
-  const [modelChoice, setModelChoice] = useState<'veo-3.1-generate-preview' | 'veo-3.1-lite-generate-preview' | 'flow-kinetic'>('veo-3.1-lite-generate-preview');
+  const [modelChoice, setModelChoice] = useState<'veo-3.1-generate-preview' | 'veo-3.1-lite-generate-preview' | 'flow-kinetic'>('flow-kinetic');
+  const [showKeyManager, setShowKeyManager] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [keyFeedback, setKeyFeedback] = useState<string | null>(null);
 
   // Directorial Layers & Hook Up State
   const [directorialLayers, setDirectorialLayers] = useState<DirectorialPromptLayers | null>(null);
@@ -498,8 +511,15 @@ ${directorialLayers.soundEffectsAr || 'موسيقى سينمائية هادئة 
   const handleGenerate = async () => {
     if (isGenerating) return;
 
+    const quotaCheck = validateFlowVideoQuota();
+    if (!quotaCheck.allowed) {
+      setError(quotaCheck.reason || 'نفذت محاولات التوليد التجريبية المجانية.');
+      return;
+    }
+
     validateQuotaUsage();
     recordFlowVideoGenerated();
+    refreshQuota();
 
     const effectivePrompt = prompt.trim() || 'Cinematic commercial product video with luxury studio illumination and high-impact hook';
 
@@ -523,6 +543,9 @@ ${directorialLayers.soundEffectsAr || 'موسيقى سينمائية هادئة 
       });
 
       setGeneratedVideoUrl(result.videoUrl);
+      if (onVideoGenerated) {
+        onVideoGenerated(result.videoUrl);
+      }
       refreshQuota();
     } catch (err: any) {
       setError(err?.message || 'فشل توليد الفيديو، يرجى إعادة المحاولة.');
@@ -623,10 +646,32 @@ ${directorialLayers.soundEffectsAr || 'موسيقى سينمائية هادئة 
 
           <div className="flex items-center gap-2">
             {/* Status indicator */}
-            <div className="hidden sm:flex px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-bold items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>كوتة Flow نشطة وجاهزة ✓</span>
+            <div className={`hidden sm:flex px-3 py-1.5 rounded-xl border text-xs font-bold items-center gap-2 ${
+              videoQuota.hasCustomKey 
+                ? 'border-purple-500/30 bg-purple-500/10 text-purple-300' 
+                : videoQuota.remainingToday > 1 
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' 
+                : videoQuota.remainingToday === 1 
+                ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' 
+                : 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${videoQuota.remainingToday > 0 || videoQuota.hasCustomKey ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+              <span>
+                {videoQuota.hasCustomKey 
+                  ? 'كوتة الفيديو: مفتاح خاص غير محدود ✓' 
+                  : `كوتة الفيديو المجانية: ${videoQuota.remainingToday} من 3 متبقية`}
+              </span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowKeyManager(!showKeyManager)}
+              className="px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold transition-all flex items-center gap-1"
+              title="إدخال أو تعديل مفتاح Google AI الخاص بك"
+            >
+              <span>🔑</span>
+              <span>{hasUserGeminiKey() ? 'مفتاحك مفعل' : 'مفتاح خاص'}</span>
+            </button>
 
             <button
               onClick={onClose}
@@ -637,6 +682,72 @@ ${directorialLayers.soundEffectsAr || 'موسيقى سينمائية هادئة 
             </button>
           </div>
         </div>
+
+        {/* Inline API Key Manager Panel in VideoFlowModal */}
+        {showKeyManager && (
+          <div className="mb-3 p-3 rounded-2xl bg-black/70 border border-cyan-500/30 text-xs space-y-2 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-white flex items-center gap-1.5">
+                <span>🔑</span>
+                <span>إدخال مفتاح Google AI Studio لتجاوز القيود وتفعيل موديلات Veo:</span>
+              </span>
+              <button 
+                type="button" 
+                onClick={() => setShowKeyManager(false)} 
+                className="text-white/40 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="text-[10px] text-white/60">
+              موديل Google Veo يتطلب مفتاح Google Cloud مفعلاً عليه تصريح خاص (Permission Denied في المفاتيح العادية). يمكنك استخدام محرك Flow Kinetic مجاناً أو إدخال مفتاحك الخاص هنا:
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                placeholder="AIzaSy..."
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (apiKeyInput.trim()) {
+                    setUserGeminiKey(apiKeyInput.trim());
+                    setKeyFeedback('تم تفعيل المفتاح بنجاح! ✓');
+                    refreshQuota();
+                    setTimeout(() => {
+                      setKeyFeedback(null);
+                      setShowKeyManager(false);
+                    }, 1800);
+                  }
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs transition-all"
+              >
+                حفظ
+              </button>
+              {hasUserGeminiKey() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearUserGeminiKey();
+                    setApiKeyInput('');
+                    setKeyFeedback('تمت العودة للمفتاح الافتراضي.');
+                    refreshQuota();
+                    setTimeout(() => setKeyFeedback(null), 1800);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 text-xs"
+                >
+                  مسح
+                </button>
+              )}
+            </div>
+            {keyFeedback && (
+              <p className="text-[10px] font-bold text-emerald-300">{keyFeedback}</p>
+            )}
+          </div>
+        )}
 
         {/* Toast / Notification Banner */}
         {copyFeedback && (
@@ -1749,9 +1860,9 @@ ${directorialLayers.soundEffectsAr || 'موسيقى سينمائية هادئة 
                       onChange={(e) => setModelChoice(e.target.value as any)}
                       className="flex-1 py-2 px-1.5 bg-black/60 border border-cyan-500/30 rounded-xl text-xs text-cyan-300 focus:outline-none focus:border-cyan-400"
                     >
-                      <option value="veo-3.1-lite-generate-preview">Veo 3.1 Lite (توليد سريع)</option>
-                      <option value="veo-3.1-generate-preview">Veo 3.1 Pro (سينمائي فائق)</option>
-                      <option value="flow-kinetic">Flow Kinetic (فوري بدون كوتة)</option>
+                      <option value="flow-kinetic">Flow Ultra Motion (مجاني ومتاح 100% بدون أذونات)</option>
+                      <option value="veo-3.1-lite-generate-preview">Veo 3.1 Lite (يتطلب مفتاح مخصص)</option>
+                      <option value="veo-3.1-generate-preview">Veo 3.1 Pro (يتطلب مفتاح مخصص)</option>
                     </select>
                   </div>
                 </div>
@@ -1761,32 +1872,56 @@ ${directorialLayers.soundEffectsAr || 'موسيقى سينمائية هادئة 
 
             {/* Error Message if any */}
             {error && (
-              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2 animate-fadeIn">
-                <span>⚠️</span>
-                <span>{error}</span>
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>{error}</span>
+                </div>
+                {error.includes('Permission Denied') && (
+                  <button
+                    type="button"
+                    onClick={() => setShowKeyManager(true)}
+                    className="px-2 py-1 rounded bg-rose-500/20 text-rose-200 text-[10px] font-bold"
+                  >
+                    إدخال مفتاح مخصص
+                  </button>
+                )}
               </div>
             )}
 
-            {/* Desktop Generate Button */}
+            {/* Desktop Generate Button / WhatsApp Beta Booking if quota exhausted */}
             <div className="hidden sm:block pt-2">
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={isGenerating}
-                className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-sm shadow-xl shadow-cyan-500/25 transition-all transform active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isGenerating ? (
-                  <>
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>جاري التوليد عبر نموذج Flow...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>🎬</span>
-                    <span>إطلاق التوليد بالمشهد العبقري والـ Hook Up</span>
-                  </>
-                )}
-              </button>
+              {!videoQuota.hasCustomKey && videoQuota.remainingToday <= 0 ? (
+                <div className="space-y-2">
+                  <WhatsAppButton 
+                    label="احجز مقعدك في البيتا الخاصة وتواصل عبر واتساب"
+                    subLabel={`الرقم المباشر: ${PRIMARY_WHATSAPP_PHONE} | رسالة تلقائية`}
+                    className="w-full"
+                  />
+                  <p className="text-[11px] text-center text-rose-300 font-bold">
+                    استنفدت الـ 3 محاولات التجريبية المجانية لتوليد الفيديو. تواصل معنا عبر واتساب لفتح الحساب الكامل!
+                  </p>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  disabled={isGenerating}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-sm shadow-xl shadow-cyan-500/25 transition-all transform active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isGenerating ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>جاري التوليد عبر نموذج Flow...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🎬</span>
+                      <span>إطلاق التوليد بالمشهد العبقري والـ Hook Up</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
           </div>
@@ -1809,13 +1944,18 @@ ${directorialLayers.soundEffectsAr || 'موسيقى سينمائية هادئة 
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={isGenerating}
-                className="py-3 px-4 rounded-xl bg-cyan-500 text-black font-black text-xs shadow-md shadow-cyan-500/30 flex items-center justify-center gap-1"
+                disabled={isGenerating || (!videoQuota.hasCustomKey && videoQuota.remainingToday <= 0)}
+                className="py-3 px-4 rounded-xl bg-cyan-500 text-black font-black text-xs shadow-md shadow-cyan-500/30 flex items-center justify-center gap-1 disabled:opacity-50"
               >
                 <span>🔄</span>
                 <span>إعادة إخراج</span>
               </button>
             </>
+          ) : !videoQuota.hasCustomKey && videoQuota.remainingToday <= 0 ? (
+            <WhatsAppButton
+              label="احجز مقعدك بالبيتا واتساب"
+              className="w-full py-3 text-xs"
+            />
           ) : (
             <button
               type="button"

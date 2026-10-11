@@ -23,6 +23,9 @@ import PlanStudio from './components/PlanStudio';
 import EditStudio from './components/EditStudio';
 import StoryboardStudio from './components/StoryboardStudio';
 import MarketingStudio from './components/MarketingStudio';
+import ExecutionErpStudio from './components/ExecutionErpStudio';
+import BusinessBrainStudio from './components/BusinessBrainStudio';
+import IntegrationsVaultStudio from './components/IntegrationsVaultStudio';
 import TabBar from './components/TabBar';
 import UserStudioWorksModal from './components/UserStudioWorksModal';
 import SocialEngineModal from './components/SocialEngineModal';
@@ -31,6 +34,7 @@ import VideoFlowModal from './components/VideoFlowModal';
 import SocialHubManager from './components/SocialHubManager';
 import GoogleSignInModal from './components/GoogleSignInModal';
 import MobileSidebarDrawer from './components/MobileSidebarDrawer';
+import ChatWidget from './components/ChatWidget';
 import { getStudioWorks } from './services/studioStorageService';
 import { hasUserGeminiKey } from './services/geminiService';
 import { getGoogleUser, logoutGoogle, subscribeGoogleAuth } from './services/googleAuthService';
@@ -835,6 +839,27 @@ function App() {
                 </div>
             );
 
+        case 'execution_erp_studio':
+            return (
+                <div className="flex flex-col w-full gap-4 animate-in fade-in duration-500">
+                    <ExecutionErpStudio />
+                </div>
+            );
+
+        case 'business_brain_studio':
+            return (
+                <div className="flex flex-col w-full gap-4 animate-in fade-in duration-500">
+                    <BusinessBrainStudio onNavigateToView={(v) => { setView(v); scrollToContent(); }} />
+                </div>
+            );
+
+        case 'integrations_vault_studio':
+            return (
+                <div className="flex flex-col w-full gap-4 animate-in fade-in duration-500">
+                    <IntegrationsVaultStudio />
+                </div>
+            );
+
         default:
             return null;
     }
@@ -894,6 +919,12 @@ function App() {
         initialHyperSocialDNA={videoFlowInitialData.hyperSocialDNA}
         onOpenSocialEngine={(url, pr) => handleOpenSocialEngine(null, null, pr)}
         onOpenQuotaModal={() => setIsQuotaModalOpen(true)}
+        onVideoGenerated={(url) => {
+          updateCreatorProject(p => ({
+            ...p,
+            generatedVideoUrl: url
+          }));
+        }}
       />
 
       {/* Full Capabilities Mobile Sidebar Drawer */}
@@ -977,7 +1008,11 @@ function App() {
                     <NavItem label="Prompt" targetView="prompt_studio" />
                     <NavItem label="Voice Over" targetView="voice_over_studio" />
                     <NavItem label="Social Hub" targetView="social_hub_studio" />
+                    <NavItem label="⚡ المحاسبة والـ ERP" targetView="execution_erp_studio" />
+                    <NavItem label="🧠 العقل الاستراتيجي (Brain)" targetView="business_brain_studio" />
+                    <NavItem label="🔒 خزينة المفاتيح (Vault)" targetView="integrations_vault_studio" />
                 </div>
+
 
                 {/* Flow Video Model Trigger Button */}
                 <button
@@ -1170,7 +1205,9 @@ function App() {
                 <NavItem label="Prompt" targetView="prompt_studio" isMobile />
                 <NavItem label="Voice" targetView="voice_over_studio" isMobile />
                 <NavItem label="Social Hub" targetView="social_hub_studio" isMobile />
+                <NavItem label="Vault" targetView="integrations_vault_studio" isMobile />
             </div>
+
             <button 
                 onClick={() => scrollMobileNav('right')}
                 className="p-1.5 rounded-full bg-[rgba(var(--color-text-base-rgb),0.05)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-base)] transition-colors shadow-sm"
@@ -1206,16 +1243,17 @@ function App() {
                   <div className="flex flex-col items-center gap-4 text-center">
                       <p className="text-sm font-bold text-[var(--color-text-medium)] uppercase tracking-widest">Business & Collaboration</p>
                       <div className="flex flex-col items-center gap-2">
-                          <p className="text-xs font-medium">للتواصل والتعاون للشركات وشرح الأداة لفريقك</p>
+                          <p className="text-xs font-medium">للتواصل والتعاون للشركات وحجز مقاعد البيتا الخاصة</p>
                           <a 
-                            href="https://wa.me/+201065414900" 
+                            href="https://wa.me/201225678405?text=%D8%A3%D8%B1%D9%8A%D8%AF%20%D8%AD%D8%AC%D8%B2%20%D9%85%D9%82%D8%B9%D8%AF%D9%8A%20%D9%81%D9%8A%20%D8%A7%D9%84%D8%A8%D9%8A%D8%AA%D8%A7%20%D8%A7%D9%84%D8%AE%D8%A7%D8%B5%D8%A9%20%D9%84%D9%85%D9%86%D8%B5%D8%A9%20Fekra%20AI" 
                             target="_blank" 
                             rel="noopener noreferrer"
                             className="group flex items-center gap-3 bg-white hover:bg-gray-100 text-emerald-600 px-8 py-4 rounded-2xl transition-all shadow-xl shadow-white/10 hover:scale-105 active:scale-95"
                           >
                             <WhatsAppIcon />
-                            <span className="text-base font-black">اضغط هنا للتواصل</span>
+                            <span className="text-base font-black">احجز مقعدك بالبيتا (واتساب)</span>
                           </a>
+                          <span className="text-[10px] text-white/40">201225678405 | بديل: 201065414900</span>
                       </div>
                   </div>
               </div>
@@ -1248,13 +1286,13 @@ function App() {
                       </p>
                   </div>
                   <a 
-                    href="https://wa.me/+201065414900" 
+                    href="https://wa.me/201225678405?text=%D8%A3%D8%B1%D9%8A%D8%AF%20%D8%AD%D8%AC%D8%B2%20%D9%85%D9%82%D8%B9%D8%AF%D9%8A%20%D9%81%D9%8A%20%D8%A7%D9%84%D8%A8%D9%8A%D8%AA%D8%A7%20%D8%A7%D9%84%D8%AE%D8%A7%D8%B5%D8%A9%20%D9%84%D9%85%D9%86%D8%B5%D8%A9%20Fekra%20AI" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="group flex items-center gap-3 bg-white text-black hover:bg-[var(--color-accent)] hover:text-white px-10 py-4 rounded-full transition-all shadow-2xl hover:scale-105 active:scale-95 font-black uppercase tracking-widest text-sm"
                   >
                     <WhatsAppIcon />
-                    <span>Contact Us</span>
+                    <span>Contact Us • WhatsApp</span>
                   </a>
               </div>
           </div>
@@ -1311,6 +1349,9 @@ function App() {
           <span className="text-[10px]">السادبار</span>
         </button>
       </div>
+
+      {/* Autonomous Sales Closer & Negotiation Engine (Phase 2) */}
+      <ChatWidget />
     </div>
   );
 }

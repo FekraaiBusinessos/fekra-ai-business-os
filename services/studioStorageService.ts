@@ -1,4 +1,5 @@
 import { StudioWorkItem } from '../types';
+import { syncProductionToCloudSQL } from './cloudSqlService';
 
 const STORAGE_KEY = 'fekra_user_studio_works_v1';
 const DB_NAME = 'fekra_studio_db';
@@ -193,6 +194,22 @@ export function saveStudioWork(item: Omit<StudioWorkItem, 'id' | 'createdAt'>): 
 
   // Asynchronously persist full-fidelity image to IndexedDB (no 5MB quota limit)
   persistToIndexedDB(newItem);
+
+  // Asynchronously synchronize with Cloud SQL database
+  if (newItem.image?.base64 || newItem.videoUrl) {
+    syncProductionToCloudSQL({
+      type: newItem.videoUrl ? 'video' : 'image',
+      prompt: newItem.prompt || newItem.title || 'Studio Production',
+      assetUrl: newItem.videoUrl || (newItem.image ? `data:${newItem.image.mimeType};base64,${newItem.image.base64.slice(0, 100)}...` : ''),
+      aspectRatio: newItem.aspectRatio || '1:1',
+      metaInfo: {
+        title: newItem.title,
+        studioType: newItem.studioType,
+        metadata: newItem.metadata,
+      },
+      isCommunityShowcase: true,
+    }).catch(e => console.warn('[Storage] Cloud SQL sync attempt:', e));
+  }
 
   // Safely update small localStorage preview cache
   safeSaveToLocalStorage(inMemoryWorks);

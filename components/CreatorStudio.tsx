@@ -1,8 +1,8 @@
 
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { CreatorStudioProject, ImageFile, HyperUniversalSocialDNA } from '../types';
-import { analyzeStyleImage, translateText, generateImage, editImage, analyzeSceneLayers, analyzeHyperUniversalSocialDNA } from '../services/geminiService';
-import { validateQuotaUsage } from '../services/quotaGuard';
+import { analyzeStyleImage, translateText, generateImage, editImage, analyzeSceneLayers, analyzeHyperUniversalSocialDNA, generateFlowVideo } from '../services/geminiService';
+import { validateQuotaUsage, recordFlowVideoGenerated, validateFlowVideoQuota } from '../services/quotaGuard';
 import { saveStudioWork } from '../services/studioStorageService';
 import { resizeImage } from '../utils';
 import CustomizationPanel from './CustomizationPanel';
@@ -414,6 +414,62 @@ Key requirements:
     }
   };
 
+  const handleDirectVideoGenerate = async () => {
+    if (!project.generatedImage && !project.prompt) return;
+
+    const quotaCheck = validateFlowVideoQuota();
+    if (!quotaCheck.allowed) {
+      updateActiveProjectState(p => { 
+        p.error = quotaCheck.reason || 'استنفدت رصيد المحاولات التجريبية المجانية لتوليد الفيديو.'; 
+      });
+      return;
+    }
+
+    recordFlowVideoGenerated();
+    updateActiveProjectState(p => {
+      p.isVideoGenerating = true;
+      p.videoProgress = 'بدء معالجة وتوليد لقطة سينمائية عبر نموذج Flow...';
+      p.error = null;
+    });
+
+    try {
+      const result = await generateFlowVideo({
+        prompt: project.prompt || 'Cinematic luxury commercial scene with high-impact visual hook',
+        sourceImage: project.generatedImage,
+        cameraMotion: 'orbit_360',
+        motionDynamics: 'cinematic',
+        aspectRatio: '1:1',
+        resolution: '1080p',
+        durationSeconds: 5,
+        onProgress: (stage) => {
+          updateActiveProjectState(p => { p.videoProgress = stage; });
+        }
+      });
+
+      updateActiveProjectState(p => {
+        p.generatedVideoUrl = result.videoUrl;
+      });
+
+      saveStudioWork({
+        title: `فيديو سينمائي مباشر: ${project.prompt ? project.prompt.slice(0, 30) : 'Flow Scene'}`,
+        prompt: project.prompt || 'Cinematic commercial',
+        studioType: 'creator_studio',
+        videoUrl: result.videoUrl,
+        image: project.generatedImage || undefined,
+        aspectRatio: '1:1',
+      });
+    } catch (err: any) {
+      updateActiveProjectState(p => {
+        p.error = err?.message || 'فشل توليد الفيديو، يرجى إعادة المحاولة';
+      });
+    } finally {
+      updateActiveProjectState(p => {
+        p.isVideoGenerating = false;
+        p.videoProgress = null;
+      });
+    }
+  };
+
 
   const handleFileUpload = (updater: (files: ImageFile[]) => void, target: 'product' | 'style') => async (files: File[]) => {
       if (!files || files.length === 0) return;
@@ -662,10 +718,15 @@ Key requirements:
              <div className="glass-card rounded-3xl p-6 min-h-[400px] border border-white/5 shadow-2xl flex flex-col gap-4">
                 <ResultDisplay 
                     imageFile={project.generatedImage} 
+                    videoUrl={project.generatedVideoUrl}
                     isLoading={project.isLoading}
+                    isVideoLoading={project.isVideoGenerating}
+                    videoProgress={project.videoProgress}
+                    hadPermissionError={!!project.error && project.error.includes('Permission Denied')}
                     onEdit={handleImageEdit}
                     isEditing={project.isEditing}
                     onRequestVideo={(img) => onRequestVideo && onRequestVideo(img, project.prompt, project.hyperSocialDNA)}
+                    onGenerateVideoDirect={handleDirectVideoGenerate}
                 />
 
                 {project.generatedImage && !project.isLoading && onRequestVideo && (

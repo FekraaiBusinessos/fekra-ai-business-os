@@ -30,12 +30,16 @@ const STUDIOS_LIST: Array<{
   { id: 'storyboard_studio', titleAr: 'Storyboard Studio', titleEn: 'Cinematic Storyboard', icon: '🎞️', desc: 'تسلسل المشاهد والقصص الإعلانية' },
   { id: 'marketing_studio', titleAr: 'Marketing Studio', titleEn: 'Ad Creative Studio', icon: '🚀', desc: 'صناعة الإعلانات وحملات منصات التواصل' },
   { id: 'campaign_studio', titleAr: 'Campaign Studio', titleEn: 'Campaign Visuals', icon: '🎯', desc: 'صناعة الحملات الإعلانية المتكاملة وهندسة العروض' },
+  { id: 'business_brain_studio', titleAr: 'العقل الاستراتيجي (Business Brain)', titleEn: 'Executive Cockpit', icon: '🧠', desc: 'غرفة القيادة المركزية وصناعة القرار الموحد لجميع المحركات', badge: 'المرحلة 6' },
+  { id: 'integrations_vault_studio', titleAr: 'خزينة المفاتيح والربط (API Vault)', titleEn: 'Keys & Drive Context Vault', icon: '🔒', desc: 'تشفير مفاتيح Gemini و Meta والربط الحي مع Google Drive', badge: 'P0 أمني' },
   { id: 'social_hub_studio', titleAr: 'Social Hub Studio', titleEn: 'Unified Social Manager', icon: '🌐', desc: 'ربط وإدارة حسابات فيسبوك وتيك توك وإنستغرام', badge: 'جديد' },
+  { id: 'execution_erp_studio', titleAr: 'المحاسبة والـ ERP', titleEn: 'Financial & Inventory ERP', icon: '⚡', desc: 'إدارة المخزون اللحظي، الفواتير الضريبية ZATCA، ودفتر الأستاذ', badge: 'المرحلة 3' },
   { id: 'edit_studio', titleAr: 'Edit Studio', titleEn: 'Image Manipulation', icon: '✂️', desc: 'تعديل التفاصيل، التوسيع، وإزالة العناصر' },
   { id: 'plan_studio', titleAr: 'Plan Studio', titleEn: 'Content Strategy Planner', icon: '📅', desc: 'جدولة خطط النشر والمحتوى الشهري' },
   { id: 'prompt_studio', titleAr: 'Prompt Studio', titleEn: 'Creative Prompt Lab', icon: '💡', desc: 'مختبر صياغة وتطوير الأوامر الإبداعية' },
   { id: 'voice_over_studio', titleAr: 'Voice Over Studio', titleEn: 'AI Voice Actor', icon: '🎙️', desc: 'التعليق الصوتي باللهجات العربية بنماذج Google' },
 ];
+
 
 export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({
   isOpen,
@@ -212,7 +216,7 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({
             {/* 5. Navigation: All 10 Studios */}
             <div className="space-y-1.5 pt-1">
               <div className="px-1 text-[11px] font-bold text-white/40 uppercase tracking-wider">
-                استوديوهات ومحركات النظام (10)
+                استوديوهات ومحركات النظام (11)
               </div>
 
               <div className="space-y-1">

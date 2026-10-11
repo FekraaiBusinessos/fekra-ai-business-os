@@ -50,6 +50,9 @@ export interface CreatorStudioProject extends ProjectBase {
   productImages: ImageFile[];
   styleImages: ImageFile[];
   generatedImage: ImageFile | null;
+  generatedVideoUrl?: string | null;
+  isVideoGenerating?: boolean;
+  videoProgress?: string | null;
   history: HistoryItem[];
   options: CustomizationOptions;
   prompt: string;
@@ -70,8 +73,7 @@ export interface CreatorStudioProject extends ProjectBase {
 }
 
 
-// --- App View ---
-export type AppView = 'creator_studio' | 'photoshoot_director' | 'prompt_studio' | 'voice_over_studio' | 'campaign_studio' | 'plan_studio' | 'edit_studio' | 'storyboard_studio' | 'marketing_studio' | 'controller_studio' | 'video_flow_studio' | 'social_hub_studio' | 'community_brain_studio';
+export type AppView = 'creator_studio' | 'photoshoot_director' | 'prompt_studio' | 'voice_over_studio' | 'campaign_studio' | 'plan_studio' | 'edit_studio' | 'storyboard_studio' | 'marketing_studio' | 'controller_studio' | 'video_flow_studio' | 'social_hub_studio' | 'community_brain_studio' | 'execution_erp_studio' | 'business_brain_studio' | 'integrations_vault_studio';
 
 // --- Google User Auth Profile ---
 export interface GoogleUserProfile {
@@ -83,6 +85,8 @@ export interface GoogleUserProfile {
   quotaTier: 'Personal Google AI Studio Quota' | 'Enterprise';
   quotaStatus: 'active' | 'warning' | 'exhausted';
   autoManaged: boolean;
+  token?: string;
+  tenantId?: string;
 }
 
 // --- Social Hub & Connected Platforms ---
@@ -101,6 +105,9 @@ export interface SocialConnectedAccount {
   followers: string;
   lastConnectedAt?: number;
   autoSync: boolean;
+  autoReply?: boolean;
+  healthStatus?: 'healthy' | 'token_expired' | 'warning';
+  lastPingMs?: number;
   permissions: string[];
   aspectRatioHint: string;
   characterLimit: number;

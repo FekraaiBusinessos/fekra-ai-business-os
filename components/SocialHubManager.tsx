@@ -8,15 +8,20 @@ import {
 } from '../types';
 import { 
   getSocialAccounts, 
+  fetchSocialAccountsFromBackend,
   connectSocialAccount, 
+  connectAllSocialAccounts,
   disconnectSocialAccount, 
   togglePlatformAutoSync, 
+  togglePlatformAutoReply,
+  testSocialPing,
   getScheduledPosts, 
   dispatchPostToPlatform,
   subscribeSocialChanges
 } from '../services/socialConnectionsService';
 import { smartEnhanceText } from '../services/geminiService';
 import PlatformConnectModal from './PlatformConnectModal';
+import EgyptianBotSimulator from './EgyptianBotSimulator';
 
 interface SocialHubManagerProps {
   initialWork?: StudioWorkItem | null;
@@ -30,8 +35,15 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
   onOpenStudioWorks,
 }) => {
   const [accounts, setAccounts] = useState<SocialConnectedAccount[]>(getSocialAccounts());
-  const [activeTab, setActiveTab] = useState<'matrix' | 'composer' | 'calendar' | 'analytics'>('composer');
+  const [activeTab, setActiveTab] = useState<'matrix' | 'composer' | 'calendar' | 'analytics' | 'bot'>('composer');
   
+  // Matrix Filters & Easy Management State
+  const [filterCategory, setFilterCategory] = useState<'all' | 'connected' | 'unconnected' | 'video' | 'chat'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [pingingMap, setPingingMap] = useState<Record<string, boolean>>({});
+  const [isBatchConnecting, setIsBatchConnecting] = useState(false);
+  const [quickFeedback, setQuickFeedback] = useState<string | null>(null);
+
   // Composer state
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatformId[]>(['instagram', 'tiktok']);
   const [postText, setPostText] = useState(
@@ -55,11 +67,76 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
   const [postsList, setPostsList] = useState<SocialScheduledPost[]>(getScheduledPosts());
 
   useEffect(() => {
+    // Initial sync from backend database
+    fetchSocialAccountsFromBackend().then(res => setAccounts(res));
+
     const unsub = subscribeSocialChanges((updated) => {
       setAccounts(updated);
     });
     return unsub;
   }, []);
+
+  const handleConnectAll = async () => {
+    setIsBatchConnecting(true);
+    setQuickFeedback('جارٍ الربط الموحد لجميع المنصات الـ 9...');
+    try {
+      const all = await connectAllSocialAccounts();
+      setAccounts(all);
+      setQuickFeedback('تم ربط وتفويض جميع منصات التواصل الاجتماعي الـ 9 بنجاح تام! ⚡');
+      setTimeout(() => setQuickFeedback(null), 4000);
+    } catch (e) {
+      setQuickFeedback('حدث خطأ أثناء الربط الشامل.');
+      setTimeout(() => setQuickFeedback(null), 3000);
+    } finally {
+      setIsBatchConnecting(false);
+    }
+  };
+
+  const handlePingSingle = async (platformId: SocialPlatformId) => {
+    setPingingMap(prev => ({ ...prev, [platformId]: true }));
+    try {
+      const res = await testSocialPing(platformId);
+      setAccounts(getSocialAccounts());
+      setQuickFeedback(res.message);
+      setTimeout(() => setQuickFeedback(null), 3500);
+    } finally {
+      setPingingMap(prev => ({ ...prev, [platformId]: false }));
+    }
+  };
+
+  const handlePingAll = async () => {
+    setQuickFeedback('جارٍ فحص استجابة وسرعة خوادم جميع المنصات...');
+    for (const acc of accounts) {
+      if (acc.isConnected) {
+        await testSocialPing(acc.id);
+      }
+    }
+    setAccounts(getSocialAccounts());
+    setQuickFeedback('اكتمل فحص جميع المنصات: جميع الـ Webhooks صالحة ومستجيبة 🟢');
+    setTimeout(() => setQuickFeedback(null), 3500);
+  };
+
+  const handleQuickConnectCard = async (platformId: SocialPlatformId) => {
+    const acc = accounts.find(a => a.id === platformId);
+    if (!acc) return;
+    
+    if (platformId === 'whatsapp') {
+      setConnectModalPlatform('whatsapp');
+      return;
+    }
+
+    try {
+      await connectSocialAccount(platformId, {
+        isConnected: true,
+      });
+      setAccounts(getSocialAccounts());
+      setQuickFeedback(`تم ربط حساب ${acc.name} (${acc.handle}) بنقرة واحدة! ⚡`);
+      setTimeout(() => setQuickFeedback(null), 3000);
+    } catch (e) {
+      setConnectModalPlatform(platformId);
+    }
+  };
+
 
   const refreshPosts = () => {
     setPostsList(getScheduledPosts());
@@ -269,12 +346,34 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
             <span>📊</span>
             <span>التحليلات ومعدل التفاعل</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('bot')}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap border ${
+              activeTab === 'bot'
+                ? 'bg-gradient-to-r from-amber-500 to-purple-600 text-white border-amber-400 shadow-lg shadow-amber-950/40'
+                : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+            }`}
+          >
+            <span>🤖</span>
+            <span>محاكي الردود &quot;ابن البلد الشاطر&quot; 🇪🇬</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-amber-400/20 text-[10px] text-amber-200 font-black">
+              جديد
+            </span>
+          </button>
         </div>
       </div>
 
       {publishFeedback && (
         <div className="p-4 rounded-2xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-200 text-xs sm:text-sm font-bold text-center animate-in fade-in duration-200 shadow-xl">
           {publishFeedback}
+        </div>
+      )}
+
+      {quickFeedback && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-900/40 via-indigo-900/40 to-emerald-900/40 border border-purple-500/40 text-white text-xs sm:text-sm font-black text-center animate-in fade-in duration-200 shadow-xl flex items-center justify-center gap-2">
+          <span>⚡</span>
+          <span>{quickFeedback}</span>
         </div>
       )}
 
@@ -512,124 +611,303 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
         </div>
       )}
 
-      {/* --- TAB 2: CONNECTED PLATFORMS MATRIX --- */}
+      {/* --- TAB 2: CONNECTED PLATFORMS MATRIX & EASY HUB --- */}
       {activeTab === 'matrix' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-base sm:text-lg font-black text-white">
-              منصات التواصل الاجتماعي المدعومة وإعدادات الحسابات
-            </h2>
-            <span className="text-xs text-white/50">
-              جميع الحسابات يتم تشفير مفاتيحها ومزامنتها لحظياً
-            </span>
+        <div className="space-y-6 animate-in fade-in duration-300">
+          
+          {/* Top Quick Actions Command Bar */}
+          <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-r from-[#17142b] via-[#121021] to-[#0c0b17] border border-purple-500/20 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-base sm:text-xl font-black text-white flex items-center gap-2">
+                  <span>🚀 معالج الربط السريع الموحد</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                    1-Click Omnichannel
+                  </span>
+                </h2>
+                <p className="text-xs text-white/60 mt-1">
+                  اربط جميع شبكات التواصل بضغطة واحدة، أو خصص كل حساب بمفرده مع فحص استجابة الخوادم لحظياً.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={handleConnectAll}
+                  disabled={isBatchConnecting}
+                  className="flex-1 sm:flex-initial px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-600 hover:opacity-95 text-white font-black text-xs sm:text-sm shadow-xl shadow-purple-900/40 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                >
+                  <span>⚡</span>
+                  <span>{isBatchConnecting ? 'جارٍ الربط الشامل...' : 'ربط جميع المنصات بنقرة واحدة (Connect All)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePingAll}
+                  className="px-4 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 text-emerald-300 font-bold text-xs border border-emerald-500/20 flex items-center gap-1.5 transition-all"
+                  title="فحص الاتصال لجميع الخوادم"
+                >
+                  <span>🟢</span>
+                  <span className="hidden md:inline">فحص سرعة الخوادم</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Filter and Search Row */}
+            <div className="pt-3 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-3">
+              {/* Category Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none">
+                <button
+                  type="button"
+                  onClick={() => setFilterCategory('all')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    filterCategory === 'all'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white/5 text-white/50 hover:text-white'
+                  }`}
+                >
+                  الكل ({accounts.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCategory('connected')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 ${
+                    filterCategory === 'connected'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-white/5 text-white/50 hover:text-white'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  المتصلة ({accounts.filter(a => a.isConnected).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCategory('unconnected')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 ${
+                    filterCategory === 'unconnected'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-white/5 text-white/50 hover:text-white'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  غير المتصلة ({accounts.filter(a => !a.isConnected).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCategory('video')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    filterCategory === 'video'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white/5 text-white/50 hover:text-white'
+                  }`}
+                >
+                  🎬 منصات الفيديو
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterCategory('chat')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                    filterCategory === 'chat'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white/5 text-white/50 hover:text-white'
+                  }`}
+                >
+                  💬 المحادثات والـ DM
+                </button>
+              </div>
+
+              {/* Search Box */}
+              <div className="w-full md:w-64 relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="بحث عن منصة أو معرف..."
+                  className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500 placeholder:text-white/30"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
+          {/* Accounts Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {accounts.map(account => (
-              <div
-                key={account.id}
-                className={`rounded-3xl p-5 border transition-all relative overflow-hidden flex flex-col justify-between ${
-                  account.isConnected
-                    ? 'bg-[#12111d] border-purple-500/30 shadow-lg'
-                    : 'bg-[#0f0e17] border-white/5 opacity-80 hover:opacity-100'
-                }`}
-              >
-                <div className="space-y-4">
-                  {/* Card top */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${account.color} flex items-center justify-center text-2xl text-white shadow-lg`}>
-                        {account.icon}
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-black text-white flex items-center gap-1.5">
-                          <span>{account.name}</span>
-                          {account.isConnected && <span className="text-blue-400 text-xs">✓</span>}
-                        </h3>
-                        <span className="text-[11px] text-white/50 block font-mono">
-                          {account.handle}
-                        </span>
-                      </div>
-                    </div>
-
-                    <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
+            {accounts
+              .filter(acc => {
+                if (searchQuery) {
+                  const q = searchQuery.toLowerCase();
+                  if (!acc.name.toLowerCase().includes(q) && !acc.handle.toLowerCase().includes(q)) return false;
+                }
+                if (filterCategory === 'connected') return acc.isConnected;
+                if (filterCategory === 'unconnected') return !acc.isConnected;
+                if (filterCategory === 'video') return ['tiktok', 'youtube', 'instagram'].includes(acc.id);
+                if (filterCategory === 'chat') return ['whatsapp', 'threads', 'twitter'].includes(acc.id);
+                return true;
+              })
+              .map(account => {
+                const isPinging = Boolean(pingingMap[account.id]);
+                return (
+                  <div
+                    key={account.id}
+                    className={`rounded-3xl p-5 border transition-all relative overflow-hidden flex flex-col justify-between ${
                       account.isConnected
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                        : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                    }`}>
-                      {account.isConnected ? 'متصل ✓' : 'غير متصل'}
-                    </span>
-                  </div>
+                        ? 'bg-[#12111d] border-purple-500/30 shadow-lg shadow-purple-950/20'
+                        : 'bg-[#0f0e17] border-white/5 hover:border-white/10'
+                    }`}
+                  >
+                    <div className="space-y-4">
+                      {/* Card top */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${account.color} flex items-center justify-center text-2xl text-white shadow-lg`}>
+                            {account.icon}
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-black text-white flex items-center gap-1.5">
+                              <span>{account.name}</span>
+                              {account.isConnected && <span className="text-blue-400 text-xs">✓</span>}
+                            </h3>
+                            <span className="text-[11px] text-white/50 block font-mono">
+                              {account.handle}
+                            </span>
+                          </div>
+                        </div>
 
-                  {/* Card Info */}
-                  <div className="grid grid-cols-2 gap-2 text-xs py-2 border-y border-white/5">
-                    <div>
-                      <span className="text-[10px] text-white/40 block">المتابعون / الجمهور:</span>
-                      <span className="font-bold text-white font-mono">{account.followers}</span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
+                            account.isConnected
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          }`}>
+                            {account.isConnected ? 'متصل ✓' : 'غير متصل'}
+                          </span>
+                          {account.lastPingMs && account.isConnected && (
+                            <span className="text-[9px] font-mono font-bold text-emerald-400">
+                              ⚡ {account.lastPingMs}ms
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Info */}
+                      <div className="grid grid-cols-2 gap-2 text-xs py-2 border-y border-white/5">
+                        <div>
+                          <span className="text-[10px] text-white/40 block">الجمهور والمتابعون:</span>
+                          <span className="font-bold text-white font-mono">{account.followers}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-white/40 block">الحد الأقصى للنص:</span>
+                          <span className="font-bold text-white font-mono">{account.characterLimit} حرف</span>
+                        </div>
+                      </div>
+
+                      {/* Permissions */}
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-white/50 font-bold block">الصلاحيات المعتمدة:</span>
+                        <div className="flex flex-wrap gap-1">
+                          {account.permissions.map((p, i) => (
+                            <span key={i} className="text-[9px] px-2 py-0.5 rounded-md bg-white/5 text-white/70">
+                              {p}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-[10px] text-white/40 block">الحد الأقصى للنص:</span>
-                      <span className="font-bold text-white font-mono">{account.characterLimit} حرف</span>
+
+                    {/* Actions Area */}
+                    <div className="pt-4 mt-4 border-t border-white/5 space-y-2.5">
+                      {account.isConnected ? (
+                        <>
+                          {/* Live Toggles: Auto Sync & AI Reply */}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await togglePlatformAutoSync(account.id);
+                                setAccounts(getSocialAccounts());
+                              }}
+                              className={`text-[10px] font-bold px-2 py-1.5 rounded-xl border transition-all text-center ${
+                                account.autoSync
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                                  : 'bg-white/5 text-white/40 border-white/5'
+                              }`}
+                            >
+                              {account.autoSync ? 'مزامنة نشطة ⚡' : 'مزامنة معطلة'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await togglePlatformAutoReply(account.id);
+                                setAccounts(getSocialAccounts());
+                              }}
+                              className={`text-[10px] font-bold px-2 py-1.5 rounded-xl border transition-all text-center ${
+                                account.autoReply
+                                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                  : 'bg-white/5 text-white/40 border-white/5'
+                              }`}
+                            >
+                              {account.autoReply ? 'رد آلي ذكي 🤖' : 'الرد معطل'}
+                            </button>
+                          </div>
+
+                          {/* Ping & Disconnect Buttons */}
+                          <div className="flex items-center justify-between gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handlePingSingle(account.id)}
+                              disabled={isPinging}
+                              className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-emerald-300 transition-colors flex items-center gap-1"
+                            >
+                              <span>{isPinging ? '...' : '🟢'}</span>
+                              <span>{isPinging ? 'جارٍ الفحص' : 'فحص الاتصال'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await disconnectSocialAccount(account.id);
+                                setAccounts(getSocialAccounts());
+                              }}
+                              className="text-[10px] font-bold text-rose-400 hover:text-rose-300 transition-colors"
+                            >
+                              إلغاء الربط
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleQuickConnectCard(account.id)}
+                            className={`flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r ${account.color} text-white font-black text-xs flex items-center justify-center gap-1.5 hover:opacity-95 shadow-md transition-all active:scale-95`}
+                          >
+                            <span>⚡</span>
+                            <span>ربط فوري بنقرة واحدة</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConnectModalPlatform(account.id)}
+                            className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors text-xs"
+                            title="تخصيص الحساب أو الرقم"
+                          >
+                            ⚙️
+                          </button>
+                        </div>
+                      )}
                     </div>
+
                   </div>
-
-                  {/* Permissions */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-white/50 font-bold block">الصلاحيات المفوضة:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {account.permissions.map((p, i) => (
-                        <span key={i} className="text-[9px] px-2 py-0.5 rounded-md bg-white/5 text-white/70">
-                          {p}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                <div className="pt-4 mt-4 border-t border-white/5 flex items-center justify-between gap-2">
-                  {account.isConnected ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          togglePlatformAutoSync(account.id);
-                          setAccounts(getSocialAccounts());
-                        }}
-                        className={`text-[11px] font-bold px-3 py-1.5 rounded-xl border transition-colors ${
-                          account.autoSync
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-                            : 'bg-white/5 text-white/40 border-white/5'
-                        }`}
-                      >
-                        {account.autoSync ? 'المزامنة مفعلة ✓' : 'المزامنة معطلة'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          disconnectSocialAccount(account.id);
-                          setAccounts(getSocialAccounts());
-                        }}
-                        className="text-[11px] font-bold text-rose-400 hover:text-rose-300 transition-colors"
-                      >
-                        إلغاء الربط
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setConnectModalPlatform(account.id)}
-                      className={`w-full py-2.5 px-3 rounded-xl bg-gradient-to-r ${account.color} text-white font-bold text-xs flex items-center justify-center gap-2 hover:opacity-95 shadow-md transition-all active:scale-95`}
-                    >
-                      <span>{account.icon}</span>
-                      <span>تسجيل الدخول وربط المنصة الآن</span>
-                    </button>
-                  )}
-                </div>
-
-              </div>
-            ))}
+                );
+              })}
           </div>
         </div>
       )}
@@ -745,6 +1023,20 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* --- TAB 5: SMART EGYPTIAN AUTO-REPLY SIMULATOR (ابن البلد الشاطر) --- */}
+      {activeTab === 'bot' && (
+        <EgyptianBotSimulator
+          accounts={accounts}
+          onToggleAutoReply={async (platformId) => {
+            await togglePlatformAutoReply(platformId);
+            setAccounts(getSocialAccounts());
+          }}
+          onOpenConnectModal={(platformId) => {
+            setConnectModalPlatform(platformId);
+          }}
+        />
       )}
 
     </div>

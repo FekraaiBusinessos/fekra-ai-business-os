@@ -25,6 +25,11 @@ export interface VideoQuotaStatus {
 }
 
 export const DAILY_FREE_VIDEOS_LIMIT = 3;
+export const PRIMARY_WHATSAPP_PHONE = '201225678405';
+export const SECONDARY_WHATSAPP_PHONE = '201065414900';
+export const WHATSAPP_BOOKING_MESSAGE = 'أريد حجز مقعدي في البيتا الخاصة لمنصة Fekra AI';
+export const WHATSAPP_BETA_URL = `https://wa.me/${PRIMARY_WHATSAPP_PHONE}?text=${encodeURIComponent(WHATSAPP_BOOKING_MESSAGE)}`;
+export const WHATSAPP_SECONDARY_URL = `https://wa.me/${SECONDARY_WHATSAPP_PHONE}?text=${encodeURIComponent(WHATSAPP_BOOKING_MESSAGE)}`;
 
 export interface DailyQuotaStatus {
   source: 'google_daily_free' | 'user_custom_key';
@@ -95,20 +100,34 @@ function updateQuotaStats(updater: (prev: QuotaStats) => QuotaStats): void {
 }
 
 /**
- * Returns current status of Google Flow video credits (Unrestricted, zero roadblocks).
+ * Returns current status of Google Flow video credits (3 free trial attempts or custom key).
  */
 export function getVideoQuotaStatus(): VideoQuotaStatus {
   const stats = getQuotaStats();
   const hasCustom = hasUserGeminiKey();
   const usedToday = stats.dailyVideosCount || 0;
 
+  if (hasCustom) {
+    return {
+      dailyFreeLimit: 999,
+      usedToday,
+      remainingToday: 999,
+      hasCustomKey: true,
+      canGenerate: true,
+      renewalCycle: 'مفعل بمفتاح Gemini الخاص بك (غير محدود)'
+    };
+  }
+
+  const remaining = Math.max(0, DAILY_FREE_VIDEOS_LIMIT - usedToday);
+  const canGenerate = remaining > 0;
+
   return {
-    dailyFreeLimit: 999,
+    dailyFreeLimit: DAILY_FREE_VIDEOS_LIMIT,
     usedToday,
-    remainingToday: 999,
-    hasCustomKey: hasCustom,
-    canGenerate: true,
-    renewalCycle: 'متاح ومفتوح دائماً دون قيود'
+    remainingToday: remaining,
+    hasCustomKey: false,
+    canGenerate,
+    renewalCycle: '3 محاولات تجريبية مجانية لكل مستخدم'
   };
 }
 
@@ -126,12 +145,20 @@ export function recordFlowVideoGenerated(): void {
 }
 
 /**
- * Validates whether user can generate a Flow Video (Always unrestricted).
+ * Validates whether user can generate a Flow Video (3 Free attempts per user).
  */
 export function validateFlowVideoQuota(): { allowed: boolean; reason?: string; remainingToday: number } {
+  const status = getVideoQuotaStatus();
+  if (!status.canGenerate) {
+    return {
+      allowed: false,
+      reason: 'لقد استنفدت المحاولات الـ 3 المجانية لتوليد الفيديو. يمكنك حجز مقعدك في البيتا الخاصة والتواصل عبر واتساب لفتح الحساب الكامل.',
+      remainingToday: 0
+    };
+  }
   return {
     allowed: true,
-    remainingToday: 999
+    remainingToday: status.remainingToday
   };
 }
 
