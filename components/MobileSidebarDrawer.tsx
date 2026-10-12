@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppView, GoogleUserProfile } from '../types';
 import { getVideoQuotaStatus, getDailyQuotaStatus, refreshSystemEngine } from '../services/quotaGuard';
+import { logoutGoogle } from '../services/googleAuthService';
 
 interface MobileSidebarDrawerProps {
   isOpen: boolean;
@@ -128,7 +129,21 @@ export const MobileSidebarDrawer: React.FC<MobileSidebarDrawerProps> = ({
                 </div>
               )}
 
-              {!googleUser && (
+              {googleUser ? (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => {
+                      logoutGoogle();
+                      onClose();
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-300 text-[11px] font-bold transition-colors whitespace-nowrap flex items-center gap-1"
+                    title="تسجيل الخروج من حساب Google"
+                  >
+                    <span>🚪</span>
+                    <span>خروج</span>
+                  </button>
+                </div>
+              ) : (
                 <button
                   onClick={() => { onClose(); onOpenGoogleSignIn(); }}
                   className="px-3 py-1.5 rounded-xl bg-white text-black text-[11px] font-bold hover:bg-neutral-200 transition-colors whitespace-nowrap"

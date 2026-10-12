@@ -113,63 +113,7 @@ const PromptEditor: React.FC<PromptEditorProps> = ({
         placeholder="Describe your vision or use the professional modes below..."
       />
 
-      {/* NEW: AI Vision Modes Section */}
-      <div className="flex flex-col gap-4 pt-3 border-t border-white/5">
-        <div className="flex flex-col gap-2">
-            <span className="text-[10px] font-black text-[var(--color-accent)] uppercase tracking-[0.2em] ml-1 flex items-center gap-2">
-                <MagicIcon /> Professional AI Vision Modes
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button 
-                    onClick={() => onApplyVisionMode?.('fusion')}
-                    className="flex flex-col items-start gap-1 p-3 bg-black/40 hover:bg-black/60 border border-white/10 hover:border-emerald-500/50 rounded-xl transition-all group"
-                >
-                    <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-                        <span className="text-[10px] font-black text-white uppercase tracking-wider">Style Fusion Mode</span>
-                    </div>
-                    <span className="text-[9px] text-white/40 group-hover:text-white/70 text-left">Merge product with reference style, mood, and lighting.</span>
-                </button>
-                <button 
-                    onClick={() => onApplyVisionMode?.('placement')}
-                    className="flex flex-col items-start gap-1 p-3 bg-black/40 hover:bg-black/60 border border-white/10 hover:border-blue-500/50 rounded-xl transition-all group"
-                >
-                    <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        <span className="text-[10px] font-black text-white uppercase tracking-wider">Scene Placement Mode</span>
-                    </div>
-                    <span className="text-[9px] text-white/40 group-hover:text-white/70 text-left">Place product into the exact reference environment.</span>
-                </button>
-            </div>
-        </div>
 
-        {/* Step 2: Rim Lighting (Secondary) */}
-        <div className="flex flex-col gap-2 pt-2 border-t border-white/5">
-            <span className="text-[9px] font-black text-white/30 uppercase tracking-widest ml-1">Quick Stock Presets (Studio Light)</span>
-            <div className="flex items-center gap-2 flex-wrap">
-                <button 
-                    onClick={onApplyStockBase}
-                    className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-[9px] font-black text-white/60 uppercase transition-all"
-                >
-                    Basic Stock
-                </button>
-                <div className="h-4 w-px bg-white/10 mx-1"></div>
-                <div className="flex flex-wrap gap-1.5">
-                    {STOCK_COLORS.map((color) => (
-                        <button
-                            key={color.label}
-                            onClick={() => onApplyRimColor?.(color.text)}
-                            className="group flex items-center gap-1.5 px-2.5 py-1.5 bg-black/40 hover:bg-black/60 border border-white/5 hover:border-[var(--color-accent)]/50 rounded-full transition-all"
-                            title={`Select ${color.label} lighting`}
-                        >
-                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color.hex, boxShadow: `0 0 6px ${color.hex}66` }}></div>
-                            <span className="text-[9px] font-bold text-white/40 group-hover:text-white uppercase">{color.label}</span>
-                        </button>
-                    ))}
-                </div>
-            </div>
-        </div>
-      </div>
       
       {(isTranslating || translatedPrompt) && (
         <div className="mt-2 p-3 glass-input rounded-lg bg-black/10 border-emerald-500/20">

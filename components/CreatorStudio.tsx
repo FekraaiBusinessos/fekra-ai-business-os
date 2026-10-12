@@ -12,6 +12,7 @@ import HistoryPanel from './HistoryPanel';
 import ResultDisplay from './ResultDisplay';
 import SceneLayerBuilder from './SceneLayerBuilder';
 import VisualDNAInspectorModal from './VisualDNAInspectorModal';
+import { synthesizeMasterScene } from '../services/masterCinematicPipeline';
 
 interface CreatorStudioProps {
   project: CreatorStudioProject;
@@ -20,6 +21,13 @@ interface CreatorStudioProps {
   onRequestVideo?: (image: ImageFile | null, prompt: string, dna?: HyperUniversalSocialDNA | null) => void;
 }
 
+const MASTER_PRESETS = [
+  { label: '👑 عطر ملكي فاخر', prompt: 'تصميم إعلاني سينمائي لزجاجة عطر ملكي فاخر من العود الأسود والمسك، على قاعدة من الرخام الأسود مع انعكاسات ضوئية ذهبية وبخار بخور انسيابي وعمق ميدان 8K' },
+  { label: '☕ قهوة مختصة راقية', prompt: 'كوب قهوة سيراميك أسود مات مع حبوب بن محمصة ولمعان بخار دافئ وإضاءة جانبية دراماتيكية' },
+  { label: '⌚ ساعة يد فارهة', prompt: 'ساعة يد ميكانيكية سويسرية فاخرة بهيكل تيتانيوم مصقول مع تفاصيل ميكانيكية دقيقة وإضاءة ستوديو مجوهرات' },
+  { label: '🧴 منتج عناية وتجميل', prompt: 'عبوة سيروم تجميلي زجاجية شفافة وسط قطرات ماء نقية وإضاءة استوديو ناعمة تبرز نقاء المستحضر' },
+];
+
 const CreatorStudio: React.FC<CreatorStudioProps> = ({
   project,
   setProject,
@@ -27,6 +35,7 @@ const CreatorStudio: React.FC<CreatorStudioProps> = ({
   onRequestVideo,
 }) => {
   const [isDNAModalOpen, setIsDNAModalOpen] = useState(false);
+  const [showArchitectureDetails, setShowArchitectureDetails] = useState(false);
   const translateTimeoutRef = useRef<number | null>(null);
   const translationRequestCounter = useRef(0);
   const lastAnalyzedRefsKey = useRef<string>('');
@@ -288,24 +297,21 @@ Key requirements:
     }
 
     try {
-      const result = await generateImage(project.productImages, finalPrompt, project.styleImages);
-      updateActiveProjectState(p => {
-          p.generatedImage = result;
-          p.history = [{ image: result, prompt: finalPrompt }, ...p.history];
+      const synthResult = await synthesizeMasterScene({
+        prompt: finalPrompt,
+        productImages: project.productImages,
+        styleImages: project.styleImages,
+        options: {
+          lightingAtmosphere: 'rembrandt_volumetric',
+          lensOptics: '85mm_f1.4_anamorphic',
+          aspectRatio: project.options?.aspectRatio || '1:1',
+        },
+        dnaContext: project.hyperSocialDNA || undefined,
       });
 
-      // Persistent auto-save to user's Studio Works Portfolio (استوديو أعمالي)
-      saveStudioWork({
-        title: currentPrompt.slice(0, 45),
-        prompt: finalPrompt,
-        studioType: 'creator_studio',
-        image: result,
-        metadata: {
-          atmosphere: project.sceneAnalysis?.estimatedAtmosphere || project.options.lightingStyle,
-          styleDescription: project.styleDescription || undefined,
-          sceneAnalysis: project.sceneAnalysis || undefined,
-          hyperSocialDNA: project.hyperSocialDNA || undefined
-        }
+      updateActiveProjectState(p => {
+        p.generatedImage = synthResult.image;
+        p.history = [{ image: synthResult.image, prompt: synthResult.masterPrompt }, ...p.history];
       });
     } catch (err) {
       console.error(err);
@@ -511,48 +517,81 @@ Key requirements:
   return (
     <main className="w-full grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4 pb-12 items-start">
         <div className="flex flex-col gap-6 order-1">
-            {/* Live Campaign Showcase 1-Click Launch Bar */}
-            <div className="glass-card p-4 rounded-3xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 via-black/40 to-pink-950/20 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-300">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 via-[var(--color-accent)] to-pink-500 flex items-center justify-center text-xl text-white shadow-lg animate-pulse">
-                  🔥
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xs sm:text-sm font-black text-white">إطلاق تجربة حملة حية متكاملة (Live Campaign Demo)</h3>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/30">
-                      Live 1-Click
-                    </span>
+            {/* UNIFIED MASTER CINEMATIC ENGINE STATUS & PILLARS HUD */}
+            <div className="glass-card p-5 rounded-3xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 via-black/50 to-pink-950/20 shadow-2xl flex flex-col gap-4 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 via-[var(--color-accent)] to-pink-500 flex items-center justify-center text-xl text-white shadow-lg shadow-purple-900/40 animate-pulse">
+                    ⚡
                   </div>
-                  <p className="text-[11px] text-white/50">
-                    أمر عربي فخم + بناء الـ 5 طبقات حركياً + توليد معقم + إرسال فوري للـ Social Engine
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm sm:text-base font-black text-white">محرك التوليد السينمائي الفائق (Unified Master Cinematic Pipeline)</h3>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/30">
+                        1-Step Live
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-white/60">
+                      دمج أوتوماتيكي لقفل الـ DNA والإضاءة الحجمية والعدسات السينمائية وحظر التشوهات بضغطة واحدة
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowArchitectureDetails(!showArchitectureDetails)}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white border border-white/10 text-[11px] font-bold transition-all whitespace-nowrap self-end sm:self-auto"
+                >
+                  {showArchitectureDetails ? 'إخفاء التفاصيل المعمارية ▴' : 'فحص معمارية الطبقات ▾'}
+                </button>
+              </div>
+
+              {/* 4 ACTIVE CINEMATIC PILLARS HUD */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-white/5 text-[10px]">
+                <div className="p-2 rounded-xl bg-black/40 border border-purple-500/20 flex flex-col gap-1">
+                  <span className="font-black text-purple-300 flex items-center gap-1">🧬 Pillar 1: DNA Lock</span>
+                  <span className="text-white/50 text-[9px] leading-tight">حفظ أبعاد وشعار المنتج بدقة</span>
+                </div>
+                <div className="p-2 rounded-xl bg-black/40 border border-amber-500/20 flex flex-col gap-1">
+                  <span className="font-black text-amber-300 flex items-center gap-1">💡 Pillar 2: Volumetric</span>
+                  <span className="text-white/50 text-[9px] leading-tight">إضاءة ريمبرانت 8K Ray Tracing</span>
+                </div>
+                <div className="p-2 rounded-xl bg-black/40 border border-cyan-500/20 flex flex-col gap-1">
+                  <span className="font-black text-cyan-300 flex items-center gap-1">🎥 Pillar 3: Anamorphic</span>
+                  <span className="text-white/50 text-[9px] leading-tight">عدسة 85mm f/1.4 وعزل فائق</span>
+                </div>
+                <div className="p-2 rounded-xl bg-black/40 border border-emerald-500/20 flex flex-col gap-1">
+                  <span className="font-black text-emerald-300 flex items-center gap-1">🛡️ Pillar 4: Anti-Artifact</span>
+                  <span className="text-white/50 text-[9px] leading-tight">حظر المظهر البلاستيكي والعيوب</span>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleLaunchLiveCampaignDemo}
-                disabled={project.isLoading || project.isAnalyzingScene}
-                className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 via-[var(--color-accent)] to-pink-600 hover:opacity-90 text-white text-xs font-black shadow-xl shadow-purple-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 whitespace-nowrap"
-              >
-                {project.isLoading || project.isAnalyzingScene ? (
-                  <>
-                    <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
-                    <span>جاري تشغيل الحملة الحية...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>🚀</span>
-                    <span>تشغيل الحملة الحية الآن</span>
-                  </>
-                )}
-              </button>
+              {/* Optional Collapsible Technical Inspector */}
+              {showArchitectureDetails && (
+                <div className="p-3 rounded-2xl bg-black/60 border border-white/10 flex flex-col gap-3 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white/80">المعمارية المعرفية للـ DNA الإعلاني:</span>
+                    {project.hyperSocialDNA && (
+                      <button
+                        type="button"
+                        onClick={() => setIsDNAModalOpen(true)}
+                        className="text-[10px] px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold hover:bg-cyan-500/30"
+                      >
+                        عرض الـ 15 طبقة للـ DNA ↗
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-white/50 leading-relaxed">
+                    يتم تمرير كافة متطلبات المشهد تلقائياً عبر المحول السينمائي بالخادم <code>/api/creative/master-prompt-transform</code> لضمان أعلى معايير الجودة العالمية في صورة واحدة دون أي تشتت أو خطوات يدوية مكررة.
+                  </p>
+                </div>
+              )}
             </div>
 
+            {/* DUAL WORKSPACE: MAIN PRODUCT & STYLE REFERENCE */}
             <div className="grid grid-cols-2 gap-4">
                 <div className="glass-card p-3 rounded-2xl flex flex-col gap-2 items-center border border-white/5">
-                    <h3 className="text-[10px] font-black text-white/40 uppercase tracking-widest">Main Product</h3>
+                    <h3 className="text-[10px] font-black text-white/40 uppercase tracking-widest">Main Product (صورة المنتج)</h3>
                     <ImageWorkspace
                         id="creator-product-uploader"
                         images={project.productImages}
@@ -563,7 +602,7 @@ Key requirements:
                     />
                 </div>
                 <div className="glass-card p-3 rounded-2xl flex flex-col gap-2 items-center border border-white/5">
-                    <h3 className="text-[10px] font-black text-white/40 uppercase tracking-widest">Style Reference</h3>
+                    <h3 className="text-[10px] font-black text-white/40 uppercase tracking-widest">Style Reference (المرجع البصري)</h3>
                     <ImageWorkspace 
                         id="creator-style-uploader"
                         title="Style Image"
@@ -576,66 +615,22 @@ Key requirements:
                 </div>
             </div>
 
-            {/* HYPER UNIVERSAL SOCIAL ENGINE V1.0 - VISUAL DNA & FACE LOCK CONTROLLER */}
-            <div className="p-3.5 rounded-2xl border border-cyan-500/30 bg-gradient-to-r from-cyan-950/40 via-blue-950/20 to-black/60 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-xl shadow-lg shadow-cyan-500/20 flex-shrink-0 animate-pulse">
-                  🧬
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-white">HYPER UNIVERSAL SOCIAL ENGINE V1.0</span>
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                      15 LAYERS • DNA LOCK
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-white/60 mt-0.5">
-                    {project.hyperSocialDNA ? (
-                      <span className="text-emerald-300 font-bold">
-                        ✓ تم استخراج DNA الهوية ({project.hyperSocialDNA.brandAI.industry}) • دستور الـ 3 ألوان: {project.hyperSocialDNA.colorConstitution.primary}
-                      </span>
-                    ) : (
-                      <span>تحليل DNA المراجع تلقائياً • قفل الوجه Face Lock • محرك الكوميديا البيعية واللهجات</span>
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* INSPIRATION PRESETS BAR */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 suggestions-scrollbar">
+              <span className="text-[10px] font-black text-white/40 uppercase tracking-wider whitespace-nowrap">قوالب سينمائية:</span>
+              {MASTER_PRESETS.map((preset, idx) => (
                 <button
+                  key={idx}
                   type="button"
-                  onClick={() => handleAnalyzeDNA()}
-                  disabled={project.isAnalyzingDNA}
-                  className="flex-1 sm:flex-none py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs transition-all shadow-md shadow-cyan-500/25 flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                  onClick={() => handleSetPrompt(preset.prompt)}
+                  className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/5 text-xs font-bold transition-all whitespace-nowrap active:scale-95"
                 >
-                  {project.isAnalyzingDNA ? (
-                    <>
-                      <div className="w-3.5 h-3.5 rounded-full border-2 border-black border-t-transparent animate-spin" />
-                      <span>جاري فحص الـ DNA...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>🧬</span>
-                      <span>{project.hyperSocialDNA ? 'استعراض طبقات الـ DNA الـ 15' : 'تحليل الـ DNA الإعلاني'}</span>
-                    </>
-                  )}
+                  {preset.label}
                 </button>
-
-                {project.hyperSocialDNA && (
-                  <button
-                    type="button"
-                    onClick={() => setIsDNAModalOpen(true)}
-                    className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all active:scale-95"
-                    title="فتح فاحص الـ DNA"
-                  >
-                    تفاصيل الـ 15 طبقة ↗
-                  </button>
-                )}
-              </div>
+              ))}
             </div>
 
-            <CustomizationPanel options={project.options} setOptions={(opt) => updateActiveProjectState(p => { p.options = opt; })} />
-
+            {/* STREAMLINED MASTER PROMPT EDITOR */}
             <PromptEditor
                 prompt={project.prompt}
                 setPrompt={handleSetPrompt}
@@ -644,71 +639,25 @@ Key requirements:
                 translatedPrompt={project.translatedPrompt}
                 isTranslating={project.isTranslating}
                 onUseTranslation={(t) => updateActiveProjectState(p => { p.prompt = t; p.isPromptAutoGenerated = false; p.translatedPrompt = null; })}
-                onApplyStockBase={handleApplyStockBase}
-                onApplyRimColor={handleApplyRimColor}
-                onApplyVisionMode={handleApplyVisionMode}
             />
 
-            {/* Multi-Layer Scene Architecture Trigger & Status */}
-            <div className="glass-card p-3 rounded-2xl border border-purple-500/25 bg-gradient-to-r from-purple-950/30 via-black/40 to-black/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-lg animate-pulse">
-                  🪐
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-white">معمارية المشهد كامل الطبقات</span>
-                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30">
-                      5 Layers 3D
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-white/50">
-                    تحليل الأوامر العربية ومطابقة المراجع المكانية والضوئية قبل التنفيذ
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleAnalyzeScene()}
-                disabled={project.isAnalyzingScene || !project.prompt.trim()}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-[var(--color-accent)] hover:from-purple-500 hover:to-[var(--color-accent-dark)] text-white text-xs font-bold shadow-md shadow-purple-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {project.isAnalyzingScene ? (
-                  <>
-                    <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
-                    <span>جاري تحليل الطبقات والمراجع...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>🪐</span>
-                    <span>{project.sceneAnalysis ? 'إعادة بناء الطبقات' : 'تحليل وبناء المشهد تفاعلياً'}</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Animated Interactive Multi-Layer Scene Builder (وقبل التنفيذ يكون متحرك كامل الطبقات في الإنشاء) */}
-            {project.sceneAnalysis && (
-              <SceneLayerBuilder
-                sceneAnalysis={project.sceneAnalysis}
-                isAnalyzing={project.isAnalyzingScene}
-                isGenerating={project.isLoading}
-                onApplyAndGenerate={(synthesizedPrompt) => {
-                  updateActiveProjectState(p => { p.prompt = synthesizedPrompt; });
-                  handleGenerate(synthesizedPrompt);
-                }}
-                onClose={() => updateActiveProjectState(p => { p.sceneAnalysis = null; })}
-                onOpenSocialEngine={() => onOpenSocialEngine && onOpenSocialEngine(null, project.generatedImage, project.prompt)}
-              />
-            )}
-
+            {/* ONE-CLICK MASTER SCENE SYNTHESIS BUTTON */}
             <button
                 onClick={() => handleGenerate()}
                 disabled={project.isLoading || !project.prompt || !!project.uploadingTarget}
-                className="w-full bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-white font-black py-5 rounded-2xl text-lg shadow-xl shadow-[var(--color-accent)]/20 transition-all transform active:scale-95 disabled:opacity-50 disabled:transform-none uppercase tracking-widest"
+                className="w-full bg-gradient-to-r from-purple-600 via-[var(--color-accent)] to-pink-600 hover:opacity-95 text-white font-black py-5 rounded-2xl text-base sm:text-lg shadow-2xl shadow-purple-900/30 transition-all transform active:scale-95 disabled:opacity-50 disabled:transform-none uppercase tracking-wide flex items-center justify-center gap-3 border border-purple-400/30 cursor-pointer"
             >
-                {project.isLoading ? 'Generating Design...' : 'Generate AI Image'}
+                {project.isLoading ? (
+                  <>
+                    <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    <span>جاري هندسة وتوليد المشهد السينمائي الفائق...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xl">🎬</span>
+                    <span>توليد المشهد السينمائي الفائق (One-Click Master Scene Synthesis)</span>
+                  </>
+                )}
             </button>
 
             {project.error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-xs font-bold text-center uppercase tracking-tight">{project.error}</div>}

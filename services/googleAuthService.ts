@@ -147,6 +147,7 @@ export const loginWithGoogle = async (
     return new Promise((resolve, reject) => {
       (window as any).google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
+        use_fedcm_for_prompt: false,
         callback: async (response: any) => {
           try {
             if (response.credential) {

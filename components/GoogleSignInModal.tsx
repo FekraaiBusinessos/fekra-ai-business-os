@@ -74,6 +74,7 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
             },
             auto_select: false,
             cancel_on_tap_outside: true,
+            use_fedcm_for_prompt: false,
           });
 
           // Render official button inside ref
@@ -90,8 +91,16 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
             });
           }
 
-          // Trigger One Tap prompt
-          g.accounts.id.prompt();
+          // Trigger One Tap prompt safely without throwing FedCM errors
+          try {
+            g.accounts.id.prompt((notification: any) => {
+              if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
+                // One Tap suppressed gracefully, official rendered button is ready
+              }
+            });
+          } catch (promptErr) {
+            console.debug('[GSI Prompt Info]:', promptErr);
+          }
         } catch (e: any) {
           console.warn('[GSI Init Error]:', e);
         }

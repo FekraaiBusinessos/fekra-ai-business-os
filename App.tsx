@@ -34,6 +34,9 @@ import VideoFlowModal from './components/VideoFlowModal';
 import SocialHubManager from './components/SocialHubManager';
 import GoogleSignInModal from './components/GoogleSignInModal';
 import MobileSidebarDrawer from './components/MobileSidebarDrawer';
+import UniversalNavBar, { VIEW_METADATA } from './components/UniversalNavBar';
+import FloatingQuickNav from './components/FloatingQuickNav';
+import UserProfileModal from './components/UserProfileModal';
 import ChatWidget from './components/ChatWidget';
 import { getStudioWorks } from './services/studioStorageService';
 import { hasUserGeminiKey } from './services/geminiService';
@@ -354,9 +357,69 @@ const createNewEditProject = (projectCount: number): EditStudioProject => ({
 
 function App() {
   const [view, setView] = useState<AppView>('creator_studio');
+  const [viewHistory, setViewHistory] = useState<AppView[]>([]);
   const [theme, setTheme] = useState('dark');
   const contentRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLDivElement>(null);
+
+  const scrollToContent = useCallback(() => {
+    contentRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  const navigateToView = useCallback((targetView: AppView) => {
+    setView(currentView => {
+      if (currentView !== targetView) {
+        setViewHistory(prev => {
+          const filtered = prev.filter(v => v !== targetView);
+          return [...filtered, currentView];
+        });
+        if (typeof window !== 'undefined') {
+          try {
+            window.history.pushState({ view: targetView }, '', `#${targetView}`);
+          } catch {}
+        }
+      }
+      return targetView;
+    });
+    scrollToContent();
+  }, [scrollToContent]);
+
+  const navigateBack = useCallback(() => {
+    setViewHistory(prev => {
+      if (prev.length > 0) {
+        const next = [...prev];
+        const previousView = next.pop()!;
+        setView(previousView);
+        if (typeof window !== 'undefined') {
+          try {
+            window.history.replaceState({ view: previousView }, '', `#${previousView}`);
+          } catch {}
+        }
+        scrollToContent();
+        return next;
+      } else {
+        setView('creator_studio');
+        scrollToContent();
+        return [];
+      }
+    });
+  }, [scrollToContent]);
+
+  // Support hardware/browser back gestures and URL hash navigation
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state?.view && VIEW_METADATA[e.state.view as AppView]) {
+        setView(e.state.view);
+      } else if (window.location.hash) {
+        const hash = window.location.hash.replace('#', '') as AppView;
+        if (VIEW_METADATA[hash]) {
+          setView(hash);
+        }
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const [creatorProjects, setCreatorProjects] = useState<CreatorStudioProject[]>([createNewCreatorProject(0)]);
   const [activeCreatorIndex, setActiveCreatorIndex] = useState(0);
@@ -491,9 +554,8 @@ function App() {
       };
       return next;
     });
-    setView('edit_studio');
-    scrollToContent();
-  }, [activeEditIndex]);
+    navigateToView('edit_studio');
+  }, [activeEditIndex, navigateToView]);
 
   const handleSelectPromptForCreator = useCallback((prompt: string, image?: any) => {
     setCreatorProjects(prev => {
@@ -506,17 +568,12 @@ function App() {
       };
       return next;
     });
-    setView('creator_studio');
-    scrollToContent();
-  }, [activeCreatorIndex]);
+    navigateToView('creator_studio');
+  }, [activeCreatorIndex, navigateToView]);
 
   useEffect(() => {
     document.body.dataset.theme = theme;
   }, [theme]);
-  
-  const scrollToContent = () => {
-    contentRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
 
   const scrollMobileNav = (direction: 'left' | 'right') => {
     if (mobileNavRef.current) {
@@ -803,7 +860,7 @@ function App() {
                                 };
                                 return current;
                             });
-                            setView('voice_over_studio');
+                            navigateToView('voice_over_studio');
                         }}
                         onSendToVideoFlow={(videoPrompt: string, image?: any) => {
                             handleOpenVideoFlow(image, videoPrompt, 'zoom_in', '9:16', 'Marketing Studio');
@@ -849,7 +906,7 @@ function App() {
         case 'business_brain_studio':
             return (
                 <div className="flex flex-col w-full gap-4 animate-in fade-in duration-500">
-                    <BusinessBrainStudio onNavigateToView={(v) => { setView(v); scrollToContent(); }} />
+                    <BusinessBrainStudio onNavigateToView={(v) => navigateToView(v)} />
                 </div>
             );
 
@@ -867,8 +924,8 @@ function App() {
 
   const NavItem = ({ label, targetView, isMobile }: { label: string, targetView: AppView, isMobile?: boolean }) => (
       <button 
-        onClick={() => { setView(targetView); scrollToContent(); }}
-        className={`${isMobile ? 'flex-shrink-0 px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'} font-medium transition-colors border-b-2 ${view === targetView ? 'text-[var(--color-accent)] border-[var(--color-accent)]' : 'text-[var(--color-text-secondary)] border-transparent hover:text-[var(--color-text-base)]'}`}
+        onClick={() => navigateToView(targetView)}
+        className={`${isMobile ? 'flex-shrink-0 px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'} font-medium transition-colors border-b-2 ${view === targetView ? 'text-[var(--color-accent)] border-[var(--color-accent)] font-bold' : 'text-[var(--color-text-secondary)] border-transparent hover:text-[var(--color-text-base)]'}`}
       >
           {label}
       </button>
@@ -880,6 +937,17 @@ function App() {
         isOpen={isGoogleSignInOpen}
         onClose={() => setIsGoogleSignInOpen(false)}
         onSuccess={(usr) => setGoogleUser(usr)}
+      />
+
+      <UserProfileModal
+        isOpen={isProfileDropdownOpen}
+        onClose={() => setIsProfileDropdownOpen(false)}
+        user={googleUser}
+        onOpenSocialHub={() => {
+          setView('social_hub_studio');
+          scrollToContent();
+        }}
+        onOpenSignIn={() => setIsGoogleSignInOpen(true)}
       />
 
       <UserStudioWorksModal
@@ -897,10 +965,7 @@ function App() {
         work={socialEngineWork}
         image={socialEngineWork?.image}
         initialPrompt={socialEngineWork?.prompt}
-        onOpenSocialHub={() => {
-          setView('social_hub_studio');
-          scrollToContent();
-        }}
+        onOpenSocialHub={() => navigateToView('social_hub_studio')}
       />
 
       <GoogleQuotaModal
@@ -932,10 +997,7 @@ function App() {
         isOpen={isMobileSidebarOpen}
         onClose={() => setIsMobileSidebarOpen(false)}
         activeView={view}
-        onSelectView={(v) => {
-          setView(v);
-          scrollToContent();
-        }}
+        onSelectView={(v) => navigateToView(v)}
         googleUser={googleUser}
         onOpenGoogleSignIn={() => setIsGoogleSignInOpen(true)}
         onOpenQuotaModal={() => setIsQuotaModalOpen(true)}
@@ -963,6 +1025,24 @@ function App() {
             
             {/* Mobile Header Controls (Visible only on mobile: lg:hidden) */}
             <div className="flex lg:hidden items-center gap-1.5">
+                {/* Mobile Direct Google User / Login Control */}
+                {googleUser ? (
+                  <button
+                    onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                    className="p-1 rounded-full border border-emerald-400/60 bg-white/5 active:scale-95 flex items-center justify-center"
+                    title={`حساب Google: ${googleUser.email}`}
+                  >
+                    <img src={googleUser.avatar} alt={googleUser.name} className="w-6 h-6 rounded-full object-cover" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setIsGoogleSignInOpen(true)}
+                    className="px-2.5 py-1 rounded-full bg-white text-black text-[10px] font-black shadow-sm active:scale-95 whitespace-nowrap"
+                  >
+                    دخول
+                  </button>
+                )}
+
                 {/* Mobile Quick Flow Video Button */}
                 <button
                   onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Mobile Header')}
@@ -1217,6 +1297,16 @@ function App() {
       </div>
 
       <div ref={contentRef} className="w-full max-w-7xl flex-grow pt-4 sm:pt-8 pb-28 lg:pb-16 px-2 sm:px-4 z-10 overflow-hidden">
+        {/* Universal Fluid Navigation & Back Bar */}
+        <UniversalNavBar
+          currentView={view}
+          previousView={viewHistory.length > 0 ? viewHistory[viewHistory.length - 1] : null}
+          onNavigate={navigateToView}
+          onBack={navigateBack}
+          canGoBack={viewHistory.length > 0 || view !== 'creator_studio'}
+          googleUser={googleUser}
+          onOpenGoogleSignIn={() => setIsGoogleSignInOpen(true)}
+        />
         {renderContent()}
         
         
@@ -1301,13 +1391,24 @@ function App() {
 
       {/* Ergonomic Mobile Bottom Navigation Bar (Thumb-friendly) */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#090e17]/95 backdrop-blur-xl border-t border-cyan-500/20 px-2 py-1.5 flex items-center justify-around shadow-2xl" dir="rtl">
-        <button
-          onClick={() => { setView('creator_studio'); scrollToContent(); }}
-          className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all ${view === 'creator_studio' ? 'text-cyan-400 font-bold scale-105' : 'text-white/60'}`}
-        >
-          <span className="text-lg">👑</span>
-          <span className="text-[10px]">استوديو</span>
-        </button>
+        {viewHistory.length > 0 ? (
+          <button
+            onClick={navigateBack}
+            className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-cyan-300 bg-cyan-500/20 border border-cyan-400/50 active:scale-95 font-black shadow-md shadow-cyan-900/40 cursor-pointer"
+            title="رجوع للشاشة السابقة"
+          >
+            <span className="text-lg">↩</span>
+            <span className="text-[10px]">رجوع</span>
+          </button>
+        ) : (
+          <button
+            onClick={() => navigateToView('creator_studio')}
+            className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all cursor-pointer ${view === 'creator_studio' ? 'text-cyan-400 font-bold scale-105' : 'text-white/60'}`}
+          >
+            <span className="text-lg">👑</span>
+            <span className="text-[10px]">الرئيسية</span>
+          </button>
+        )}
 
         <button
           onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Bottom Nav')}
@@ -1349,6 +1450,16 @@ function App() {
           <span className="text-[10px]">السادبار</span>
         </button>
       </div>
+
+      {/* Universal Ergonomic Floating Navigation & Back Controller for All Devices */}
+      <FloatingQuickNav
+        currentView={view}
+        previousView={viewHistory.length > 0 ? viewHistory[viewHistory.length - 1] : null}
+        canGoBack={viewHistory.length > 0 || view !== 'creator_studio'}
+        onBack={navigateBack}
+        onNavigate={navigateToView}
+        onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+      />
 
       {/* Autonomous Sales Closer & Negotiation Engine (Phase 2) */}
       <ChatWidget />
