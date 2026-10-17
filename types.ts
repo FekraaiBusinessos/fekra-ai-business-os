@@ -9,9 +9,11 @@ export interface CustomizationOptions {
 }
 
 export interface ImageFile {
+  id?: string;
   base64: string;
   mimeType: string;
   name: string;
+  imageUrl?: string;
 }
 
 export interface HistoryItem {
@@ -49,6 +51,9 @@ export interface SceneAnalysisResult {
 export interface CreatorStudioProject extends ProjectBase {
   productImages: ImageFile[];
   styleImages: ImageFile[];
+  logoImages?: ImageFile[];
+  advertiserImages?: ImageFile[];
+  decorImages?: ImageFile[];
   generatedImage: ImageFile | null;
   generatedVideoUrl?: string | null;
   isVideoGenerating?: boolean;
@@ -61,7 +66,7 @@ export interface CreatorStudioProject extends ProjectBase {
   isAnalyzingStyle: boolean;
   isLoading: boolean;
   error: string | null;
-  uploadingTarget: 'product' | 'style' | null;
+  uploadingTarget: 'product' | 'style' | 'logo' | 'advertiser' | 'decor' | null;
   translatedPrompt: string | null;
   isTranslating: boolean;
   editPrompt: string;
@@ -73,7 +78,7 @@ export interface CreatorStudioProject extends ProjectBase {
 }
 
 
-export type AppView = 'creator_studio' | 'photoshoot_director' | 'prompt_studio' | 'voice_over_studio' | 'campaign_studio' | 'plan_studio' | 'edit_studio' | 'storyboard_studio' | 'marketing_studio' | 'controller_studio' | 'video_flow_studio' | 'social_hub_studio' | 'community_brain_studio' | 'execution_erp_studio' | 'business_brain_studio' | 'integrations_vault_studio';
+export type AppView = 'home' | 'creator_studio' | 'omni_crm_studio' | 'photoshoot_director' | 'prompt_studio' | 'voice_over_studio' | 'campaign_studio' | 'plan_studio' | 'edit_studio' | 'storyboard_studio' | 'marketing_studio' | 'controller_studio' | 'video_flow_studio' | 'social_hub_studio' | 'community_brain_studio' | 'execution_erp_studio' | 'business_brain_studio' | 'integrations_vault_studio' | 'public_store';
 
 // --- Google User Auth Profile ---
 export interface GoogleUserProfile {
@@ -87,6 +92,13 @@ export interface GoogleUserProfile {
   autoManaged: boolean;
   token?: string;
   tenantId?: string;
+  companyName?: string;
+  phone?: string;
+  industry?: string;
+  country?: string;
+  city?: string;
+  currency?: string;
+  plan?: 'starter' | 'growth' | 'enterprise';
 }
 
 // --- Social Hub & Connected Platforms ---
@@ -863,3 +875,47 @@ export interface CommunityThoughtItem {
   isFeatured?: boolean;
 }
 
+// --- Omni CRM & Omnichannel Marketing Types ---
+export type CustomerSegment = 'vip' | 'lead' | 'cart_abandoned' | 'loyal';
+
+export interface CrmCustomer {
+  id: number;
+  tenantId: string;
+  name: string;
+  phone?: string | null;
+  email?: string | null;
+  channel: string;
+  segment: CustomerSegment;
+  tags: string[];
+  totalSpentCents: number;
+  createdAt: string;
+}
+
+export interface MarketingPricingTier {
+  tierName: string;
+  priceSar: number;
+  originalPriceSar?: number;
+  badge?: string;
+  features: string[];
+}
+
+export interface MarketingHooks {
+  painAmplification: string; // تضخيم الألم
+  irresistibleOffer: string; // العرض المغري
+  urgencyScarcity: string;   // الاستعجال والندرة
+}
+
+export interface MarketingCampaign {
+  id: number;
+  tenantId: string;
+  name: string;
+  targetSegment: string;
+  productId?: number | null;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
+  copyText?: string | null;
+  hooksJson: MarketingHooks | Record<string, any>;
+  pricingTiersJson: MarketingPricingTier[] | Record<string, any>;
+  status: 'draft' | 'published' | 'dispatched';
+  createdAt: string;
+}

@@ -170,3 +170,19 @@ export function pcmToWavBlob(pcmData: Float32Array, sampleRate: number, numChann
 
     return new Blob([view], { type: 'audio/wav' });
 }
+
+/**
+ * Safely resolves any ImageFile or base64 string to a valid <img> src.
+ * Prevents double "data:..." prefixes and handles remote URLs cleanly.
+ */
+export function resolveImageSrc(image: { base64?: string; mimeType?: string; imageUrl?: string } | null | undefined): string {
+  if (!image) return '';
+  const raw = image.imageUrl || image.base64 || '';
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('data:') || trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+    return trimmed;
+  }
+  const mime = image.mimeType || 'image/jpeg';
+  return `data:${mime};base64,${trimmed}`;
+}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ImageFile } from '../types';
+import { resolveImageSrc } from '../utils';
 import SmartEnhanceButton from './SmartEnhanceButton';
 import { 
   getVideoQuotaStatus, 
@@ -129,7 +130,8 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
     setIsDownloading(true);
     const img = new Image();
-    img.src = `data:${imageFile.mimeType};base64,${imageFile.base64}`;
+    img.crossOrigin = 'anonymous';
+    img.src = resolveImageSrc(imageFile);
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
@@ -311,20 +313,16 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
 
       {/* Permission Denied Notice if encountered */}
       {hadPermissionError && (
-        <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-2 animate-fadeIn">
+        <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-200 text-xs flex items-center justify-between gap-2 animate-fadeIn">
           <div className="flex items-center gap-2">
-            <span>ℹ️</span>
+            <span>⚡</span>
             <span>
-              مفتاح Google الافتراضي لا يمتلك صلاحية Veo (Permission Denied). قام محرك Flow Kinetic بإنتاج فيديو MP4 حقيقي كامل الحركة مجاناً.
+              محرك Flow Kinetic السحابي يعمل تلقائياً وبأعلى دقة مجاناً بدون الحاجة لأي مفاتيح يدوية.
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowKeyManager(true)}
-            className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-[10px] font-bold whitespace-nowrap"
-          >
-            إدخال مفتاح مخصص
-          </button>
+          <span className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 text-[10px] font-bold whitespace-nowrap">
+            مفعل سحابياً ✓
+          </span>
         </div>
       )}
 
@@ -440,10 +438,17 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
         {!isLoading && !isEditing && !isVideoLoading && !showVideo && imageFile && (
           <div className="w-full h-full relative">
             <img 
-              src={`data:${imageFile.mimeType};base64,${imageFile.base64}`} 
+              src={resolveImageSrc(imageFile)} 
               alt="Generated Design" 
+              referrerPolicy="no-referrer"
               className="object-contain w-full h-full cursor-pointer transition-transform duration-700 group-hover:scale-[1.02]"
               onClick={() => setIsFullViewOpen(true)}
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.includes('proxy-image') && (target.src.startsWith('http://') || target.src.startsWith('https://'))) {
+                  target.src = `/api/media/proxy-image?url=${encodeURIComponent(target.src)}`;
+                }
+              }}
             />
             {/* Overlay Hint */}
             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none flex items-center justify-center">
@@ -576,9 +581,16 @@ const ResultDisplay: React.FC<ResultDisplayProps> = ({
           onClick={() => setIsFullViewOpen(false)}
         >
           <img
-            src={`data:${imageFile.mimeType};base64,${imageFile.base64}`}
+            src={resolveImageSrc(imageFile)}
             alt="Full view result"
+            referrerPolicy="no-referrer"
             className="max-w-full max-h-full object-contain shadow-2xl rounded-2xl"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('proxy-image') && (target.src.startsWith('http://') || target.src.startsWith('https://'))) {
+                target.src = `/api/media/proxy-image?url=${encodeURIComponent(target.src)}`;
+              }
+            }}
           />
           <button 
             onClick={() => setIsFullViewOpen(false)} 

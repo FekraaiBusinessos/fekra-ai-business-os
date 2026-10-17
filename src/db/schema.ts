@@ -205,7 +205,6 @@ export const commissions = pgTable('commissions', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-// Relations
 export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   users: many(users),
   knowledgeEntries: many(knowledgeEntries),
@@ -218,7 +217,10 @@ export const tenantsRelations = relations(tenants, ({ one, many }) => ({
   affiliates: many(affiliates),
   tenantApiKeys: many(tenantApiKeys),
   tenantKnowledgeSources: many(tenantKnowledgeSources),
+  customers: many(customers),
+  marketingCampaigns: many(marketingCampaigns),
   apiVault: one(tenantApiVault),
+  brandDna: one(brandDna),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -392,4 +394,149 @@ export const tenantApiVaultRelations = relations(tenantApiVault, ({ one }) => ({
     references: [tenants.tenantId],
   }),
 }));
+
+// ==========================================
+// PHASE 4 & CRM: OMNICHANNEL MARKETING & CUSTOMER MANAGEMENT
+// ==========================================
+
+// 15. Customers (إدارة العملاء وتجزئة الشرائح - Multi-Tenant CRM)
+export const customers = pgTable('customers', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').references(() => tenants.tenantId).notNull(),
+  name: text('name').notNull(),
+  phone: text('phone'),
+  email: text('email'),
+  channel: text('channel').default('whatsapp'), // whatsapp, telegram, instagram, web
+  segment: text('segment').default('lead').notNull(), // 'vip' | 'lead' | 'cart_abandoned' | 'loyal'
+  tags: jsonb('tags').$type<string[]>().default([]),
+  totalSpentCents: integer('total_spent_cents').default(0).notNull(), // in Halalas/cents
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const customersRelations = relations(customers, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [customers.tenantId],
+    references: [tenants.tenantId],
+  }),
+}));
+
+// 16. Marketing Campaigns (حملات التسويق الموحدة، الفيديوهات، والكتابة الإعلانية)
+export const marketingCampaigns = pgTable('marketing_campaigns', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').references(() => tenants.tenantId).notNull(),
+  name: text('name').notNull(),
+  targetSegment: text('target_segment').default('all').notNull(), // 'all' | 'vip' | 'lead' | 'cart_abandoned' | 'loyal'
+  productId: integer('product_id').references(() => inventoryItems.id),
+  imageUrl: text('image_url'),
+  videoUrl: text('video_url'),
+  copyText: text('copy_text'),
+  hooksJson: jsonb('hooks_json').$type<Record<string, unknown> | Array<unknown>>().default({}),
+  pricingTiersJson: jsonb('pricing_tiers_json').$type<Record<string, unknown> | Array<unknown>>().default({}),
+  status: text('status').default('draft').notNull(), // 'draft' | 'published' | 'dispatched'
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const marketingCampaignsRelations = relations(marketingCampaigns, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [marketingCampaigns.tenantId],
+    references: [tenants.tenantId],
+  }),
+  product: one(inventoryItems, {
+    fields: [marketingCampaigns.productId],
+    references: [inventoryItems.id],
+  }),
+}));
+
+// ==========================================
+// PHASE 6 & SELF-EVOLUTION: AUTONOMOUS CONSCIOUSNESS & STABLE RELEASES
+// ==========================================
+
+// 17. Autonomous Evolution Cycles (سجل التطور الذاتي والتحسين التلقائي للوكلاء)
+export const evolutionCycles = pgTable('evolution_cycles', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').references(() => tenants.tenantId).notNull(),
+  cycleType: text('cycle_type').default('auto_optimization').notNull(), // 'auto_optimization' | 'sentiment_recalibration' | 'prompt_tuning'
+  triggerReason: text('trigger_reason').notNull(),
+  optimizationsApplied: jsonb('optimizations_applied').$type<Record<string, unknown> | Array<unknown>>().default([]),
+  consciousnessScoreBefore: integer('consciousness_score_before').default(88).notNull(),
+  consciousnessScoreAfter: integer('consciousness_score_after').default(96).notNull(),
+  status: text('status').default('completed').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const evolutionCyclesRelations = relations(evolutionCycles, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [evolutionCycles.tenantId],
+    references: [tenants.tenantId],
+  }),
+}));
+
+// 18. Continuous Stable Releases & Snapshots (تصدير النسخ المستقرة ولقطات النظام)
+export const systemReleases = pgTable('system_releases', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').references(() => tenants.tenantId).notNull(),
+  versionTag: text('version_tag').notNull(), // e.g. v5.1.0-STABLE
+  releaseTitle: text('release_title').notNull(),
+  changelog: text('changelog'),
+  stabilityScore: integer('stability_score').default(99).notNull(), // 0-100%
+  snapshotData: jsonb('snapshot_data').$type<Record<string, unknown>>().default({}),
+  isGoldenRelease: boolean('is_golden_release').default(true).notNull(),
+  checksum: text('checksum').notNull(),
+  exportedAt: timestamp('exported_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ==========================================
+// FORENSIC AUDIT TRAIL: IMMUTABLE EVIDENCE CHAIN (الأدلة الجنائية الرقمية المشفرة)
+// ==========================================
+
+// 19. Forensic Audit Logs (سجل الأدلة الجنائية الرقمية المشفر وسلسلة النزاهة غير القابلة للتلاعب)
+export const forensicAuditLogs = pgTable('forensic_audit_logs', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').references(() => tenants.tenantId).notNull(),
+  eventType: text('event_type').notNull(), // 'AGENT_CONVERSATION_CLOSING' | 'ZATCA_INVOICE_GENERATION' | 'AUTONOMOUS_MUTATION' | 'VAULT_ACCESS' | 'VOICE_NEGOTIATION_CALL' | 'GOLDEN_RELEASE_CREATION' | 'SOCIAL_LEAD_CONVERSION' | 'CHAIN_GENESIS'
+  actor: text('actor').notNull(), // 'Sales Closer Agent' | 'Omni-Council Executive' | 'ZATCA Tax Sentinel' | 'Autonomous Scheduler' | 'Voice Negotiator'
+  evidencePayload: jsonb('evidence_payload').$type<Record<string, unknown>>().default({}),
+  prevHash: text('prev_hash').notNull(), // Hash chaining for forensic proof (SHA-256 of preceding block)
+  recordHash: text('record_hash').notNull(), // SHA-256 of (prevHash + eventType + actor + canonicalPayload + timestamp)
+  signature: text('signature').notNull(), // Cryptographic signature / proof seal (HMAC-SHA256)
+  verificationStatus: text('verification_status').default('VERIFIED_UNALTERED').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const forensicAuditLogsRelations = relations(forensicAuditLogs, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [forensicAuditLogs.tenantId],
+    references: [tenants.tenantId],
+  }),
+}));
+
+// 20. Brand DNA & Visual Constitution (الهوية البصرية والدستور اللوني وقفل الوجوه والأنماط)
+export const brandDna = pgTable('brand_dna', {
+  id: serial('id').primaryKey(),
+  tenantId: text('tenant_id').references(() => tenants.tenantId).notNull().unique(),
+  brandName: text('brand_name').notNull(),
+  industry: text('industry').default('general').notNull(),
+  logoUrl: text('logo_url'),
+  decorImages: jsonb('decor_images').$type<string[]>().default([]),
+  primaryColor: text('primary_color').default('#06B6D4').notNull(),
+  secondaryColor: text('secondary_color').default('#8B5CF6').notNull(),
+  neutralColor: text('neutral_color').default('#0F172A').notNull(),
+  colorGradingFilter: text('color_grading_filter').default('contrast(1.05) saturate(1.1) brightness(1.02)').notNull(),
+  brandPersonality: text('brand_personality').default('Elite Professional, Dynamic, High Conversion').notNull(),
+  typographyPreset: text('typography_preset').default('Sticker-Style Arabic Bold').notNull(),
+  faceLockProfile: jsonb('face_lock_profile').$type<Record<string, unknown>>().default({}),
+  dnaSummary: jsonb('dna_summary').$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const brandDnaRelations = relations(brandDna, ({ one }) => ({
+  tenant: one(tenants, {
+    fields: [brandDna.tenantId],
+    references: [tenants.tenantId],
+  }),
+}));
+
+
 

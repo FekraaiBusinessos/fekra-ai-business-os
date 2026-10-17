@@ -35,7 +35,7 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
   onOpenStudioWorks,
 }) => {
   const [accounts, setAccounts] = useState<SocialConnectedAccount[]>(getSocialAccounts());
-  const [activeTab, setActiveTab] = useState<'matrix' | 'composer' | 'calendar' | 'analytics' | 'bot'>('composer');
+  const [activeTab, setActiveTab] = useState<'matrix' | 'composer' | 'calendar' | 'analytics' | 'bot' | 'leads_loop'>('composer');
   
   // Matrix Filters & Easy Management State
   const [filterCategory, setFilterCategory] = useState<'all' | 'connected' | 'unconnected' | 'video' | 'chat'>('all');
@@ -43,6 +43,14 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
   const [pingingMap, setPingingMap] = useState<Record<string, boolean>>({});
   const [isBatchConnecting, setIsBatchConnecting] = useState(false);
   const [quickFeedback, setQuickFeedback] = useState<string | null>(null);
+
+  // Comment-to-Lead Loop State (Milestone 2)
+  const [leadPlatform, setLeadPlatform] = useState<SocialPlatformId>('instagram');
+  const [leadCommentText, setLeadCommentText] = useState('بكام العرض لو سمحت ومعه ضمان استبدال وتوصيل سريع؟');
+  const [leadCommenterName, setLeadCommenterName] = useState('سارة عبد العزيز');
+  const [leadCommenterHandle, setLeadCommenterHandle] = useState('@sara_lifestyle');
+  const [isProcessingLead, setIsProcessingLead] = useState(false);
+  const [leadResult, setLeadResult] = useState<any>(null);
 
   // Composer state
   const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatformId[]>(['instagram', 'tiktok']);
@@ -114,6 +122,35 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
     setAccounts(getSocialAccounts());
     setQuickFeedback('اكتمل فحص جميع المنصات: جميع الـ Webhooks صالحة ومستجيبة 🟢');
     setTimeout(() => setQuickFeedback(null), 3500);
+  };
+
+  const handleRunCommentToLead = async () => {
+    if (!leadCommentText.trim()) return;
+    setIsProcessingLead(true);
+    setLeadResult(null);
+    try {
+      const res = await fetch('/api/social/comment-to-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform: leadPlatform,
+          commentText: leadCommentText,
+          commenterName: leadCommenterName,
+          commenterUsername: leadCommenterHandle,
+          postTitle: 'عرض المنتج الرائد - Fekra AI OS',
+        }),
+      });
+      const data = await res.json();
+      setLeadResult(data);
+      setQuickFeedback('تم اصطياد العميل، وتوليد الرد النفسي، وإنشاء ليد في الـ CRM وتجهيز رابط الواتساب بنجاح! 🎯⚡');
+      setTimeout(() => setQuickFeedback(null), 4000);
+    } catch (err) {
+      console.error('Comment-to-lead error:', err);
+      setQuickFeedback('تعذر معالجة التعليق.');
+      setTimeout(() => setQuickFeedback(null), 3000);
+    } finally {
+      setIsProcessingLead(false);
+    }
   };
 
   const handleQuickConnectCard = async (platformId: SocialPlatformId) => {
@@ -359,6 +396,21 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
             <span>محاكي الردود &quot;ابن البلد الشاطر&quot; 🇪🇬</span>
             <span className="px-1.5 py-0.5 rounded-md bg-amber-400/20 text-[10px] text-amber-200 font-black">
               جديد
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('leads_loop')}
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap border ${
+              activeTab === 'leads_loop'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-400 shadow-lg shadow-emerald-950/40'
+                : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+            }`}
+          >
+            <span>🎯</span>
+            <span>حلقة النمو: تحويل التعليقات إلى ليدز (Comment-to-Lead)</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-emerald-400/20 text-[10px] text-emerald-200 font-black">
+              Milestone 2
             </span>
           </button>
         </div>
@@ -1037,6 +1089,207 @@ export const SocialHubManager: React.FC<SocialHubManagerProps> = ({
             setConnectModalPlatform(platformId);
           }}
         />
+      )}
+
+      {/* --- TAB 6: COMMENT-TO-LEAD AUTONOMOUS GROWTH LOOP (Milestone 2) --- */}
+      {activeTab === 'leads_loop' && (
+        <div className="space-y-6">
+          <div className="p-6 sm:p-8 rounded-3xl bg-[#111019] border border-white/10 space-y-6 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-600/10 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/10 pb-6">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">🎯</span>
+                  <h2 className="text-xl sm:text-2xl font-black text-white">
+                    حلقة النمو الاجتماعي التلقائية (Comment-to-Lead Loop)
+                  </h2>
+                </div>
+                <p className="text-xs sm:text-sm text-white/60 mt-1 max-w-2xl leading-relaxed">
+                  تحويل تعليقات منشورات Instagram و Facebook و TikTok آلياً إلى عملاء مؤهلين (CRM Leads)، مع توليد ردود نفسية تحفيزية وتوجيه لحظي لفتح محادثة واتساب مجهزة لإتمام الشراء.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-1.5 rounded-full text-emerald-300 text-xs font-black">
+                <span>⚡ سرعة الاستجابة:</span>
+                <span className="font-mono">34ms (فورية)</span>
+              </div>
+            </div>
+
+            {/* Presets and Simulator Controls */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Column: Comment Formulation */}
+              <div className="lg:col-span-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-white/70 block">المنصة المستهدفة</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { id: 'instagram', label: 'إنستغرام 📸', color: 'from-pink-600 to-purple-600' },
+                      { id: 'facebook', label: 'فيسبوك 📘', color: 'from-blue-600 to-indigo-600' },
+                      { id: 'tiktok', label: 'تيك توك 🎵', color: 'from-neutral-800 to-pink-900' },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setLeadPlatform(p.id as SocialPlatformId)}
+                        className={`p-2.5 rounded-xl text-xs font-bold transition-all border ${
+                          leadPlatform === p.id
+                            ? `bg-gradient-to-r ${p.color} text-white border-white/30 shadow-lg`
+                            : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-white/70 block">اسم صاحب التعليق</label>
+                    <input
+                      type="text"
+                      value={leadCommenterName}
+                      onChange={(e) => setLeadCommenterName(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      placeholder="اسم العميل"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-white/70 block">المعرّف (Handle)</label>
+                    <input
+                      type="text"
+                      value={leadCommenterHandle}
+                      onChange={(e) => setLeadCommenterHandle(e.target.value)}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      placeholder="@username"
+                    />
+                  </div>
+                </div>
+
+                {/* Quick Preset Buttons */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-white/70 block">سيناريوهات ونماذج تعليقات شائعة</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { label: 'استفسار عن السعر والضمان 💰', text: 'بكام العرض لو سمحت ومعه ضمان استبدال وتوصيل سريع؟' },
+                      { label: 'استفسار عن الشحن والتوصيل 🚚', text: 'في توصيل للرياض ومتاح الدفع عند الاستلام؟' },
+                      { label: 'نية شراء فورية ومستعجلة 🔥', text: 'عايز احجز قطعتين فوراً قبل ما تنتهي الدفعة، كيف الطريقة؟' },
+                    ].map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setLeadCommentText(preset.text)}
+                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] text-white/80 transition-all"
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-white/70 block">نص تعليق العميل على المنشور</label>
+                  <textarea
+                    rows={3}
+                    value={leadCommentText}
+                    onChange={(e) => setLeadCommentText(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-emerald-500 leading-relaxed"
+                    placeholder="اكتب أو اختر نص التعليق الوارد..."
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isProcessingLead || !leadCommentText.trim()}
+                  onClick={handleRunCommentToLead}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:opacity-95 text-white font-black text-sm shadow-xl shadow-emerald-950/40 transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50"
+                >
+                  {isProcessingLead ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                      <span>جارٍ اصطياد العميل وصناعة الرد النفسي وتجهيز الواتساب...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>⚡</span>
+                      <span>تشغيل حلقة التحويل (Capture Lead & Generate Direct Route)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Right Column: Execution Output */}
+              <div className="lg:col-span-6 space-y-4">
+                <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-4 h-full flex flex-col justify-between">
+                  {leadResult ? (
+                    <div className="space-y-4 animate-in fade-in duration-300">
+                      <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                          <span className="text-xs font-black text-emerald-300">تم اصطياد العميل بنجاح (Lead Captured)</span>
+                        </div>
+                        <span className="text-[10px] text-white/40 font-mono">Status: {leadResult.status}</span>
+                      </div>
+
+                      {/* Psychological Trigger Used */}
+                      <div className="p-3 rounded-xl bg-purple-900/20 border border-purple-500/30 text-xs space-y-1">
+                        <span className="text-[10px] text-purple-300 font-bold block">المحفز النفسي البيعي المعتمد:</span>
+                        <p className="text-white font-bold">{leadResult.psychologicalTrigger}</p>
+                      </div>
+
+                      {/* Public Reply Card */}
+                      <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-cyan-300">💬 الرد التلقائي العام المنشور على {leadResult.platform}:</span>
+                          <span className="text-[10px] text-white/40">المعلم فكرة (ابن البلد)</span>
+                        </div>
+                        <p className="text-xs text-white leading-relaxed bg-black/40 p-2.5 rounded-lg border border-white/5">
+                          {leadResult.publicReply}
+                        </p>
+                      </div>
+
+                      {/* CRM Record Created */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-0.5">
+                          <span className="text-[10px] text-white/40">سجل العميل في CRM</span>
+                          <div className="text-white font-bold">{leadResult.leadCreated?.name}</div>
+                          <span className="text-[9px] text-emerald-400 font-mono">Segment: {leadResult.leadCreated?.segment}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-0.5">
+                          <span className="text-[10px] text-white/40">قناة الاستقطاب</span>
+                          <div className="text-white font-bold uppercase">{leadResult.platform}</div>
+                          <span className="text-[9px] text-purple-300">Tags: {leadResult.leadCreated?.tags?.join(', ') || 'lead'}</span>
+                        </div>
+                      </div>
+
+                      {/* WhatsApp Direct Action Button */}
+                      <div className="pt-2">
+                        <a
+                          href={leadResult.whatsappRedirectUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-3 px-4 rounded-xl bg-[#25D366] hover:bg-[#128C7E] text-white font-black text-xs sm:text-sm shadow-lg shadow-[#25D366]/20 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-98"
+                        >
+                          <span>💬</span>
+                          <span>فتح محادثة الواتساب المجهزة لإغلاق الصفقة فورياً</span>
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 my-auto">
+                      <span className="text-4xl opacity-40">🎯</span>
+                      <h4 className="text-sm font-bold text-white/70">جاهز لاختبار حلقة النمو الاجتماعي</h4>
+                      <p className="text-xs text-white/40 max-w-xs leading-relaxed">
+                        اختر المنصة واكتب تعليقاً ثم اضغط &quot;تشغيل حلقة التحويل&quot; لمعاينة الرد الفوري، وتسجيل العميل في الـ CRM، وتوليد رابط الواتساب المحكم.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

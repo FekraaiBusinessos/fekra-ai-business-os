@@ -26,6 +26,7 @@ import MarketingStudio from './components/MarketingStudio';
 import ExecutionErpStudio from './components/ExecutionErpStudio';
 import BusinessBrainStudio from './components/BusinessBrainStudio';
 import IntegrationsVaultStudio from './components/IntegrationsVaultStudio';
+import OmniCrmStudio from './components/OmniCrmStudio';
 import TabBar from './components/TabBar';
 import UserStudioWorksModal from './components/UserStudioWorksModal';
 import SocialEngineModal from './components/SocialEngineModal';
@@ -34,13 +35,18 @@ import VideoFlowModal from './components/VideoFlowModal';
 import SocialHubManager from './components/SocialHubManager';
 import GoogleSignInModal from './components/GoogleSignInModal';
 import MobileSidebarDrawer from './components/MobileSidebarDrawer';
+import Sidebar from './components/Sidebar';
 import UniversalNavBar, { VIEW_METADATA } from './components/UniversalNavBar';
-import FloatingQuickNav from './components/FloatingQuickNav';
+import { PublicDigitalStore } from './components/PublicDigitalStore';
+import { SuperAdminControlRoom } from './components/SuperAdminControlRoom';
+import UnifiedRegistrationModal from './components/UnifiedRegistrationModal';
 import UserProfileModal from './components/UserProfileModal';
 import ChatWidget from './components/ChatWidget';
+import HomeLandingPage from './components/HomeLandingPage';
+import { BusinessMemoryProvider } from './src/contexts/BusinessMemoryContext';
 import { getStudioWorks } from './services/studioStorageService';
 import { hasUserGeminiKey } from './services/geminiService';
-import { getGoogleUser, logoutGoogle, subscribeGoogleAuth } from './services/googleAuthService';
+import { getGoogleUser, logoutGoogle, subscribeGoogleAuth, loginDirectly } from './services/googleAuthService';
 import { StudioWorkItem, GoogleUserProfile } from './types';
 import { LIGHTING_STYLES, CAMERA_PERSPECTIVES, VOICES } from './constants';
 
@@ -197,6 +203,9 @@ const createNewCreatorProject = (projectCount: number): CreatorStudioProject => 
   name: `Project ${projectCount + 1}`,
   productImages: [],
   styleImages: [], 
+  logoImages: [],
+  advertiserImages: [],
+  decorImages: [],
   generatedImage: null,
   history: [],
   options: {
@@ -356,9 +365,10 @@ const createNewEditProject = (projectCount: number): EditStudioProject => ({
 });
 
 function App() {
-  const [view, setView] = useState<AppView>('creator_studio');
+  const [view, setView] = useState<AppView>('home');
   const [viewHistory, setViewHistory] = useState<AppView[]>([]);
   const [theme, setTheme] = useState('dark');
+  const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const mobileNavRef = useRef<HTMLDivElement>(null);
 
@@ -367,6 +377,13 @@ function App() {
   }, []);
 
   const navigateToView = useCallback((targetView: AppView) => {
+    // Strict Gatekeeping: If unauthenticated, only 'home' and 'public_store' views are accessible
+    const currentUser = getGoogleUser();
+    if (!currentUser && targetView !== 'home' && targetView !== 'public_store') {
+      setIsGoogleSignInOpen(true);
+      return;
+    }
+
     setView(currentView => {
       if (currentView !== targetView) {
         setViewHistory(prev => {
@@ -408,14 +425,22 @@ function App() {
   // Support hardware/browser back gestures and URL hash navigation
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      if (e.state?.view && VIEW_METADATA[e.state.view as AppView]) {
-        setView(e.state.view);
-      } else if (window.location.hash) {
-        const hash = window.location.hash.replace('#', '') as AppView;
-        if (VIEW_METADATA[hash]) {
-          setView(hash);
+      const currentUser = getGoogleUser();
+      const rawTarget = (e.state?.view || window.location.hash.replace('#', '')) as AppView;
+      const targetView = (VIEW_METADATA[rawTarget] || rawTarget === 'public_store') ? rawTarget : 'home';
+
+      if (!currentUser && targetView !== 'home' && targetView !== 'public_store') {
+        setView('home');
+        setIsGoogleSignInOpen(true);
+        if (typeof window !== 'undefined') {
+          try {
+            window.history.replaceState({ view: 'home' }, '', '#home');
+          } catch {}
         }
+        return;
       }
+
+      setView(targetView);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -462,8 +487,21 @@ function App() {
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
 
   const [isQuotaModalOpen, setIsQuotaModalOpen] = useState(false);
-  const [hasCustomKey, setHasCustomKey] = useState(hasUserGeminiKey());
+  const [hasCustomKey, setHasCustomKey] = useState<boolean>(() => hasUserGeminiKey());
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
+  const [isSuperAdminOpen, setIsSuperAdminOpen] = useState(false);
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
+
+  // Auto-detect instant public QR store/menu route from URL
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const pathname = window.location.pathname;
+      if (pathname.startsWith('/menu') || pathname.startsWith('/store')) {
+        setView('public_store');
+      }
+    }
+  }, []);
 
   const [isVideoFlowOpen, setIsVideoFlowOpen] = useState(false);
   const [videoFlowInitialData, setVideoFlowInitialData] = useState<{
@@ -497,6 +535,15 @@ function App() {
   useEffect(() => {
     const unsub = subscribeGoogleAuth((usr) => {
       setGoogleUser(usr);
+      if (!usr) {
+        // Enforce home view when logged out
+        setView('home');
+        if (typeof window !== 'undefined') {
+          try {
+            window.history.replaceState({ view: 'home' }, '', '#home');
+          } catch {}
+        }
+      }
     });
 
     const handleKeyUpdate = () => {
@@ -721,6 +768,34 @@ function App() {
 
 
   const renderContent = () => {
+    // 1. Instant Public QR Store / Menu accessible directly by visitors & customers
+    if (view === 'public_store') {
+      return (
+        <div className="flex flex-col w-full gap-4 animate-in fade-in duration-500">
+          <PublicDigitalStore
+            tenantId={googleUser?.tenantId || 'ten_demo'}
+            onClose={() => navigateToView('home')}
+          />
+        </div>
+      );
+    }
+
+    // 2. Strict Gatekeeping: Unauthenticated visitors see the Home Landing Page
+    if (!googleUser || view === 'home') {
+      return (
+        <div className="flex flex-col w-full gap-4 animate-in fade-in duration-500">
+          <HomeLandingPage
+            onNavigateToView={navigateToView}
+            user={googleUser}
+            onOpenSignIn={() => setIsGoogleSignInOpen(true)}
+            onOpenProfile={() => setIsProfileDropdownOpen(true)}
+            onOpenQuotaModal={() => setIsQuotaModalOpen(true)}
+            onOpenRegistration={() => setIsRegistrationOpen(true)}
+          />
+        </div>
+      );
+    }
+
     switch (view) {
         case 'creator_studio':
             return (
@@ -737,6 +812,7 @@ function App() {
                         setProject={updateCreatorProject}
                         onOpenSocialEngine={handleOpenSocialEngine}
                         onRequestVideo={(img, pr, dna) => handleOpenVideoFlow(img, pr, 'orbit_360', '1:1', 'Creator Studio', dna || creatorProjects[activeCreatorIndex]?.hyperSocialDNA)}
+                        onNavigateToView={navigateToView}
                     />
                 </div>
             );
@@ -896,6 +972,13 @@ function App() {
                 </div>
             );
 
+        case 'omni_crm_studio':
+            return (
+                <div className="flex flex-col w-full gap-4 animate-in fade-in duration-500">
+                    <OmniCrmStudio />
+                </div>
+            );
+
         case 'execution_erp_studio':
             return (
                 <div className="flex flex-col w-full gap-4 animate-in fade-in duration-500">
@@ -973,6 +1056,12 @@ function App() {
         onClose={() => setIsQuotaModalOpen(false)}
       />
 
+      {isSuperAdminOpen && (
+        <SuperAdminControlRoom
+          onClose={() => setIsSuperAdminOpen(false)}
+        />
+      )}
+
       <VideoFlowModal
         isOpen={isVideoFlowOpen}
         onClose={() => setIsVideoFlowOpen(false)}
@@ -1025,288 +1114,359 @@ function App() {
             
             {/* Mobile Header Controls (Visible only on mobile: lg:hidden) */}
             <div className="flex lg:hidden items-center gap-1.5">
-                {/* Mobile Direct Google User / Login Control */}
                 {googleUser ? (
-                  <button
-                    onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-                    className="p-1 rounded-full border border-emerald-400/60 bg-white/5 active:scale-95 flex items-center justify-center"
-                    title={`حساب Google: ${googleUser.email}`}
-                  >
-                    <img src={googleUser.avatar} alt={googleUser.name} className="w-6 h-6 rounded-full object-cover" />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                      className="p-1 rounded-full border border-emerald-400/60 bg-white/5 active:scale-95 flex items-center justify-center"
+                      title={`حساب Google: ${googleUser.email}`}
+                    >
+                      <img src={googleUser.avatar} alt={googleUser.name} className="w-6 h-6 rounded-full object-cover" />
+                    </button>
+
+                    {/* Mobile Quick Flow Video Button */}
+                    <button
+                      onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Mobile Header')}
+                      className="px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-300 text-[11px] font-bold flex items-center gap-1 active:scale-95 shadow-sm"
+                      title="توليد فيديو Flow (3 مجاناً)"
+                    >
+                      <span>🎬</span>
+                      <span>Flow</span>
+                    </button>
+
+                    {/* Mobile Quick Quota Button */}
+                    <button
+                      onClick={() => setIsQuotaModalOpen(true)}
+                      className="px-2 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-[11px] font-bold flex items-center gap-1 active:scale-95"
+                      title="كوتة Google المتجددة"
+                    >
+                      <span className="text-xs">⚡</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    </button>
+
+                    {/* Mobile Hamburger Menu Button (Opens Full Capabilities Sidebar) */}
+                    <button
+                      onClick={() => setIsMobileSidebarOpen(true)}
+                      className="p-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/40 text-cyan-300 transition-all flex items-center justify-center active:scale-95 ml-0.5"
+                      aria-label="فتح القائمة والقدرات الشاملة (السادبار)"
+                    >
+                      <svg className="w-5 h-5 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M4 6h16M4 12h16M4 18h16" />
+                      </svg>
+                    </button>
+                  </>
                 ) : (
                   <button
                     onClick={() => setIsGoogleSignInOpen(true)}
-                    className="px-2.5 py-1 rounded-full bg-white text-black text-[10px] font-black shadow-sm active:scale-95 whitespace-nowrap"
+                    className="px-3 py-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-[11px] font-black shadow-md active:scale-95 whitespace-nowrap flex items-center gap-1"
                   >
-                    دخول
+                    <span>دخول / تسجيل</span>
                   </button>
                 )}
-
-                {/* Mobile Quick Flow Video Button */}
-                <button
-                  onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Mobile Header')}
-                  className="px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-300 text-[11px] font-bold flex items-center gap-1 active:scale-95 shadow-sm"
-                  title="توليد فيديو Flow (3 مجاناً)"
-                >
-                  <span>🎬</span>
-                  <span>Flow</span>
-                </button>
-
-                {/* Mobile Quick Quota Button */}
-                <button
-                  onClick={() => setIsQuotaModalOpen(true)}
-                  className="px-2 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-[11px] font-bold flex items-center gap-1 active:scale-95"
-                  title="كوتة Google المتجددة"
-                >
-                  <span className="text-xs">⚡</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                </button>
-
-                {/* Mobile Hamburger Menu Button (Opens Full Capabilities Sidebar) */}
-                <button
-                  onClick={() => setIsMobileSidebarOpen(true)}
-                  className="p-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/40 text-cyan-300 transition-all flex items-center justify-center active:scale-95 ml-0.5"
-                  aria-label="فتح القائمة والقدرات الشاملة (السادبار)"
-                >
-                  <svg className="w-5 h-5 text-cyan-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                </button>
             </div>
 
             {/* Desktop Controls (Visible only on lg screens) */}
             <div className="hidden lg:flex items-center gap-2">
-                <div className="flex items-center gap-1 overflow-x-auto">
-                    <NavItem label="Creator Studio" targetView="creator_studio" />
-                    <NavItem label="Storyboard" targetView="storyboard_studio" />
-                    <NavItem label="Marketing" targetView="marketing_studio" />
-                    <NavItem label="Photoshoot" targetView="photoshoot_director" />
-                    <NavItem label="Edit" targetView="edit_studio" />
-                    <NavItem label="Plan" targetView="plan_studio" />
-                    <NavItem label="Campaign" targetView="campaign_studio" />
-                    <NavItem label="Prompt" targetView="prompt_studio" />
-                    <NavItem label="Voice Over" targetView="voice_over_studio" />
-                    <NavItem label="Social Hub" targetView="social_hub_studio" />
-                    <NavItem label="⚡ المحاسبة والـ ERP" targetView="execution_erp_studio" />
-                    <NavItem label="🧠 العقل الاستراتيجي (Brain)" targetView="business_brain_studio" />
-                    <NavItem label="🔒 خزينة المفاتيح (Vault)" targetView="integrations_vault_studio" />
-                </div>
-
-
-                {/* Flow Video Model Trigger Button */}
-                <button
-                  onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Direct Navigation')}
-                  className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-cyan-900/30 transition-all flex items-center gap-1.5 border border-cyan-400/40 active:scale-95 whitespace-nowrap"
-                  title="فتح واجهة نموذج Flow لتوليد الفيديو (Google Veo)"
-                >
-                  <span className="text-sm">🎬</span>
-                  <span>نموذج Flow</span>
-                </button>
-
-                {/* Social Hub Quick Switcher Button */}
-                <button
-                  onClick={() => { setView('social_hub_studio'); scrollToContent(); }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-black shadow-md transition-all flex items-center gap-1.5 border border-white/20 active:scale-95 whitespace-nowrap ${
-                    view === 'social_hub_studio'
-                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-purple-900/40'
-                      : 'bg-white/10 hover:bg-white/20 text-white'
-                  }`}
-                  title="قالب إدارة وتكامل منصات التواصل الاجتماعي الموحد"
-                >
-                  <span>🌐</span>
-                  <span>Social Hub</span>
-                </button>
-
-                {/* Google Quota & Engine Refresh Button */}
-                <button
-                  onClick={() => setIsQuotaModalOpen(true)}
-                  className="px-3 py-1.5 rounded-full bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-400/40 text-cyan-300 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
-                  title="كوتة Google اليومية المتجددة وتنشيط النظام"
-                >
-                  <span className="text-amber-400">⚡</span>
-                  <span>كوتة Google المتجددة</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                </button>
-
-                {/* Google User Profile Sign-In Badge */}
                 {googleUser ? (
-                  <div className="relative">
+                  <>
+                    <div className="flex items-center gap-1 overflow-x-auto">
+                        <NavItem label="🏠 الرئيسية والباقات" targetView="home" />
+                        <NavItem label="🎯 Omni CRM & Ads" targetView="omni_crm_studio" />
+                        <NavItem label="Creator Studio" targetView="creator_studio" />
+                        <NavItem label="Storyboard" targetView="storyboard_studio" />
+                        <NavItem label="Marketing" targetView="marketing_studio" />
+                        <NavItem label="Photoshoot" targetView="photoshoot_director" />
+                        <NavItem label="Edit" targetView="edit_studio" />
+                        <NavItem label="Plan" targetView="plan_studio" />
+                        <NavItem label="Campaign" targetView="campaign_studio" />
+                        <NavItem label="Prompt" targetView="prompt_studio" />
+                        <NavItem label="Voice Over" targetView="voice_over_studio" />
+                        <NavItem label="Social Hub" targetView="social_hub_studio" />
+                        <NavItem label="⚡ المحاسبة والـ ERP" targetView="execution_erp_studio" />
+                        <NavItem label="🧠 العقل الاستراتيجي (Brain)" targetView="business_brain_studio" />
+                        <NavItem label="🔒 خزينة المفاتيح (Vault)" targetView="integrations_vault_studio" />
+                    </div>
+
+                    {/* Flow Video Model Trigger Button */}
                     <button
-                      onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-                      className="px-2.5 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-emerald-500/40 text-white text-xs font-bold transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap"
-                      title={`حساب Google: ${googleUser.email}`}
+                      onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Direct Navigation')}
+                      className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:opacity-95 text-white text-xs font-black shadow-lg shadow-cyan-900/30 transition-all flex items-center gap-1.5 border border-cyan-400/40 active:scale-95 whitespace-nowrap"
+                      title="فتح واجهة نموذج Flow لتوليد الفيديو (Google Veo)"
                     >
-                      <img src={googleUser.avatar} alt="Google Avatar" className="w-5 h-5 rounded-full object-cover" />
-                      <span className="hidden sm:inline text-xs text-white max-w-[90px] truncate">{googleUser.name}</span>
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" />
+                      <span className="text-sm">🎬</span>
+                      <span>نموذج Flow</span>
                     </button>
 
-                    {isProfileDropdownOpen && (
-                      <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-[#14131f] border border-white/15 p-4 shadow-2xl z-50 animate-in fade-in duration-150 text-right" dir="rtl">
-                        <div className="flex items-center gap-3 pb-3 border-b border-white/10">
-                          <img src={googleUser.avatar} alt="Google Avatar" className="w-10 h-10 rounded-full object-cover border border-emerald-500/50" />
-                          <div className="min-w-0 flex-1">
-                            <span className="text-xs font-black text-white block truncate">{googleUser.name}</span>
-                            <span className="text-[10px] text-white/50 block font-mono truncate">{googleUser.email}</span>
-                            <span className="text-[9px] text-emerald-400 font-bold">حساب Google نشط وموثق ✓</span>
+                    {/* Social Hub Quick Switcher Button */}
+                    <button
+                      onClick={() => { setView('social_hub_studio'); scrollToContent(); }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-black shadow-md transition-all flex items-center gap-1.5 border border-white/20 active:scale-95 whitespace-nowrap ${
+                        view === 'social_hub_studio'
+                          ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-purple-900/40'
+                          : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                      title="قالب إدارة وتكامل منصات التواصل الاجتماعي الموحد"
+                    >
+                      <span>🌐</span>
+                      <span>Social Hub</span>
+                    </button>
+
+                    {/* Google Quota & Engine Refresh Button */}
+                    <button
+                      onClick={() => setIsQuotaModalOpen(true)}
+                      className="px-3 py-1.5 rounded-full bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-400/40 text-cyan-300 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95 whitespace-nowrap"
+                      title="كوتة Google اليومية المتجددة وتنشيط النظام"
+                    >
+                      <span className="text-amber-400">⚡</span>
+                      <span>كوتة Google المتجددة</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    </button>
+
+                    {/* Google User Profile Sign-In Badge */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
+                        className="px-2.5 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-emerald-500/40 text-white text-xs font-bold transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap"
+                        title={`حساب Google: ${googleUser.email}`}
+                      >
+                        <img src={googleUser.avatar} alt="Google Avatar" className="w-5 h-5 rounded-full object-cover" />
+                        <span className="hidden sm:inline text-xs text-white max-w-[90px] truncate">{googleUser.name}</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" />
+                      </button>
+
+                      {isProfileDropdownOpen && (
+                        <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-[#14131f] border border-white/15 p-4 shadow-2xl z-50 animate-in fade-in duration-150 text-right" dir="rtl">
+                          <div className="flex items-center gap-3 pb-3 border-b border-white/10">
+                            <img src={googleUser.avatar} alt="Google Avatar" className="w-10 h-10 rounded-full object-cover border border-emerald-500/50" />
+                            <div className="min-w-0 flex-1">
+                              <span className="text-xs font-black text-white block truncate">{googleUser.name}</span>
+                              <span className="text-[10px] text-white/50 block font-mono truncate">{googleUser.email}</span>
+                              <span className="text-[9px] text-emerald-400 font-bold">حساب Google نشط وموثق ✓</span>
+                            </div>
+                          </div>
+
+                          <div className="py-2.5 space-y-1.5 text-xs text-white/70">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span>كوتة Google AI Studio:</span>
+                              <span className="text-emerald-300 font-bold">متصلة تلقائياً ⚡</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span>رصيد فيديو Flow:</span>
+                              <span className="text-cyan-300 font-bold">3 مجاناً يومياً 🎬</span>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-white/10 space-y-1.5">
+                            <button
+                              onClick={() => {
+                                setIsProfileDropdownOpen(false);
+                                setView('social_hub_studio');
+                                scrollToContent();
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-xs font-bold transition-colors text-right flex items-center justify-between"
+                            >
+                              <span>🌐 إدارة منصات التواصل (Social Hub)</span>
+                              <span>←</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setIsProfileDropdownOpen(false);
+                                setIsSuperAdminOpen(true);
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-cyan-600/25 hover:bg-cyan-600/40 text-cyan-300 text-xs font-bold transition-colors text-right flex items-center justify-between"
+                            >
+                              <span>👑 غرفة التحكم المركزية (Super Admin)</span>
+                              <span>←</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setIsProfileDropdownOpen(false);
+                                navigateToView('public_store');
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 text-xs font-bold transition-colors text-right flex items-center justify-between"
+                            >
+                              <span>🛍️ المتجر والمنيو الرقمي (QR Store)</span>
+                              <span>←</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setIsProfileDropdownOpen(false);
+                                setIsChatModalOpen(true);
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-cyan-600/25 to-blue-600/25 hover:from-cyan-600/40 hover:to-blue-600/40 text-cyan-200 text-xs font-bold transition-colors text-right flex items-center justify-between"
+                            >
+                              <span>💼 وكيل التفاوض والمبيعات (Phase 2)</span>
+                              <span>←</span>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                logoutGoogle();
+                                setIsProfileDropdownOpen(false);
+                                setIsGoogleSignInOpen(true);
+                              }}
+                              className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-rose-300 text-xs font-bold transition-colors text-right flex items-center justify-between"
+                            >
+                              <span>تبديل الحساب / تسجيل خروج</span>
+                              <span>🚪</span>
+                            </button>
                           </div>
                         </div>
-
-                        <div className="py-2.5 space-y-1.5 text-xs text-white/70">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span>كوتة Google AI Studio:</span>
-                            <span className="text-emerald-300 font-bold">متصلة تلقائياً ⚡</span>
-                          </div>
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span>رصيد فيديو Flow:</span>
-                            <span className="text-cyan-300 font-bold">3 مجاناً يومياً 🎬</span>
-                          </div>
-                        </div>
-
-                        <div className="pt-2 border-t border-white/10 space-y-1.5">
-                          <button
-                            onClick={() => {
-                              setIsProfileDropdownOpen(false);
-                              setView('social_hub_studio');
-                              scrollToContent();
-                            }}
-                            className="w-full py-2 px-3 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 text-xs font-bold transition-colors text-right flex items-center justify-between"
-                          >
-                            <span>🌐 إدارة منصات التواصل (Social Hub)</span>
-                            <span>←</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              logoutGoogle();
-                              setIsProfileDropdownOpen(false);
-                              setIsGoogleSignInOpen(true);
-                            }}
-                            className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 text-rose-300 text-xs font-bold transition-colors text-right flex items-center justify-between"
-                          >
-                            <span>تبديل الحساب / تسجيل خروج</span>
-                            <span>🚪</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                      {/* Persistent User Studio Portfolio Button */}
+                      <button
+                        onClick={() => setIsStudioWorksOpen(true)}
+                        className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-purple-600 via-[var(--color-accent)] to-pink-500 hover:opacity-90 text-white text-xs font-black shadow-lg shadow-purple-900/30 transition-all flex items-center gap-1.5 border border-white/20 active:scale-95 whitespace-nowrap"
+                        title="استوديو أعمالي المحفوظة"
+                      >
+                        <span>🎨</span>
+                        <span>استوديو أعمالي</span>
+                        {studioWorksCount > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px] text-white font-mono font-bold">
+                            {studioWorksCount}
+                          </span>
+                        )}
+                      </button>
+                  </>
                 ) : (
-                  <button
-                    onClick={() => setIsGoogleSignInOpen(true)}
-                    className="px-3 py-1.5 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 text-xs font-black shadow-md transition-all flex items-center gap-1.5 active:scale-95 whitespace-nowrap"
-                  >
-                    <GoogleGLogo />
-                    <span>دخول بجوجل</span>
-                  </button>
-                )}
-
-                {/* Persistent User Studio Portfolio Button */}
-                <button
-                  onClick={() => setIsStudioWorksOpen(true)}
-                  className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-purple-600 via-[var(--color-accent)] to-pink-500 hover:opacity-90 text-white text-xs font-black shadow-lg shadow-purple-900/30 transition-all flex items-center gap-1.5 border border-white/20 active:scale-95 whitespace-nowrap"
-                  title="استوديو أعمالي المحفوظة"
-                >
-                  <span>🎨</span>
-                  <span>استوديو أعمالي</span>
-                  {studioWorksCount > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-black/40 text-[10px] text-white font-mono font-bold">
-                      {studioWorksCount}
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-white/50 hidden xl:inline">
+                      🛡️ الوصول للوحدات والاستوديوهات والـ CRM مخصص للأعضاء المسجلين
                     </span>
-                  )}
-                </button>
+                    <button
+                      onClick={() => setIsGoogleSignInOpen(true)}
+                      className="px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-black shadow-lg shadow-cyan-900/40 transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap cursor-pointer"
+                    >
+                      <GoogleGLogo />
+                      <span>تسجيل الدخول / إنشاء حساب</span>
+                    </button>
+                  </div>
+                )}
             </div>
         </div>
       </nav>
 
-      {/* Hero Section with Responsive Mobile Sizing */}
-      <section className="w-full max-w-7xl mx-auto px-4 pt-6 sm:pt-12 pb-8 sm:pb-12 flex flex-col justify-center min-h-[40vh] sm:min-h-[55vh] relative overflow-hidden">
-           <div className="max-w-4xl relative z-10">
-              <h1 className="text-3xl sm:text-6xl md:text-8xl font-black tracking-tight leading-[1.05] sm:leading-[0.9] text-[var(--color-text-base)] break-words">
-                 EASY & FAST<br/>
-                 WAY TO<br/>
-                 <Typewriter />
-              </h1>
-              <div className="mt-4 sm:mt-8 pl-3 sm:pl-4 border-l-4 border-[var(--color-accent)]">
-                  <p className="text-sm sm:text-xl text-[var(--color-text-secondary)] max-w-xl leading-relaxed">
-                    Transform your imagination into the perfect design photo with the power of Ai.
-                  </p>
-              </div>
-              <div className="mt-6 sm:mt-10 flex flex-wrap gap-3 sm:gap-4">
-                 <button 
-                    onClick={scrollToContent}
-                    className="w-full sm:w-auto bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-white font-bold py-2.5 sm:py-3 px-6 sm:px-8 rounded-full text-base sm:text-lg transition-transform transform hover:scale-105 flex items-center justify-center shadow-lg shadow-[var(--color-accent)]/20"
-                 >
-                    START CREATING <ArrowRightIcon />
-                 </button>
-                 <button
-                    onClick={() => setIsMobileSidebarOpen(true)}
-                    className="w-full sm:hidden py-2.5 px-5 rounded-full bg-white/10 hover:bg-white/15 border border-cyan-500/30 text-cyan-200 font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
-                 >
-                    <span>☰</span>
-                    <span>استعراض كافة قدرات واستوديوهات Fekra</span>
-                 </button>
-              </div>
-           </div>
-           <div className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 pr-12 pointer-events-none">
-                <div className="pointer-events-auto">
-                    <InteractiveLogo />
+      {/* Main Desktop & Mobile Layout Container with Ergonomic Sidebar */}
+      <div className={`w-full flex-grow flex flex-row items-stretch relative transition-all duration-300 ${
+        view !== 'home' && googleUser ? (isDesktopSidebarCollapsed ? 'lg:pr-16' : 'lg:pr-64') : ''
+      }`}>
+        {/* Desktop Expandable/Collapsible Ergonomic Sidebar - Displayed exclusively inside authenticated studios */}
+        {view !== 'home' && googleUser && (
+          <Sidebar
+            activeView={view}
+            onSelectView={(v) => {
+              navigateToView(v);
+              scrollToContent();
+            }}
+            googleUser={googleUser}
+            onOpenGoogleSignIn={() => setIsGoogleSignInOpen(true)}
+            isCollapsed={isDesktopSidebarCollapsed}
+            onToggleCollapse={() => setIsDesktopSidebarCollapsed(!isDesktopSidebarCollapsed)}
+          />
+        )}
+
+        {/* Center/Main Workspace */}
+        <div className="flex-1 flex flex-col items-center min-w-0 overflow-x-hidden">
+          {/* Hero Section with Responsive Mobile Sizing - Shown only on primary Creator landing */}
+          {view === 'creator_studio' && (
+            <section className="w-full max-w-7xl mx-auto px-4 pt-6 sm:pt-12 pb-8 sm:pb-12 flex flex-col justify-center min-h-[40vh] sm:min-h-[55vh] relative overflow-hidden">
+             <div className="max-w-4xl relative z-10">
+                <h1 className="text-3xl sm:text-6xl md:text-8xl font-black tracking-tight leading-[1.05] sm:leading-[0.9] text-[var(--color-text-base)] break-words">
+                   EASY & FAST<br/>
+                   WAY TO<br/>
+                   <Typewriter />
+                </h1>
+                <div className="mt-4 sm:mt-8 pl-3 sm:pl-4 border-l-4 border-[var(--color-accent)]">
+                    <p className="text-sm sm:text-xl text-[var(--color-text-secondary)] max-w-xl leading-relaxed">
+                      Transform your imagination into the perfect design photo with the power of Ai.
+                    </p>
                 </div>
-           </div>
-      </section>
+                <div className="mt-6 sm:mt-10 flex flex-wrap gap-3 sm:gap-4">
+                   <button 
+                      onClick={scrollToContent}
+                      className="w-full sm:w-auto bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-white font-bold py-2.5 sm:py-3 px-6 sm:px-8 rounded-full text-base sm:text-lg transition-transform transform hover:scale-105 flex items-center justify-center shadow-lg shadow-[var(--color-accent)]/20 cursor-pointer"
+                   >
+                      START CREATING <ArrowRightIcon />
+                   </button>
+                   <button
+                      onClick={() => setIsMobileSidebarOpen(true)}
+                      className="w-full sm:hidden py-2.5 px-5 rounded-full bg-white/10 hover:bg-white/15 border border-cyan-500/30 text-cyan-200 font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
+                   >
+                      <span>☰</span>
+                      <span>استعراض كافة قدرات واستوديوهات Fekra</span>
+                   </button>
+                </div>
+             </div>
+             <div className="hidden lg:block absolute right-0 top-1/2 -translate-y-1/2 pr-12 pointer-events-none">
+                  <div className="pointer-events-auto">
+                      <InteractiveLogo />
+                  </div>
+             </div>
+            </section>
+          )}
       
-      {/* Swipeable Mobile Studio Strips */}
-      <div className="lg:hidden sticky top-14 z-30 w-full bg-[rgba(var(--color-background-base-rgb),0.96)] backdrop-blur-md border-b border-[rgba(var(--color-text-base-rgb),0.1)] flex items-center justify-center gap-1 px-2 py-1.5">
-           <button 
-                onClick={() => scrollMobileNav('left')}
-                className="p-1.5 rounded-full bg-[rgba(var(--color-text-base-rgb),0.05)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-base)] transition-colors shadow-sm"
-             >
-                <ChevronLeftIcon />
-            </button>
-            <div 
-                ref={mobileNavRef}
-                className="flex items-center gap-1.5 overflow-x-auto suggestions-scrollbar scroll-smooth mask-linear-fade flex-1 py-0.5"
-            >
-                <NavItem label="Creator" targetView="creator_studio" isMobile />
-                <button
-                    onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Mobile Strip')}
-                    className="flex-shrink-0 px-2.5 py-1 text-xs font-black rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 whitespace-nowrap flex items-center gap-1 shadow-sm"
-                >
-                    <span>🎬</span>
-                    <span>فيديو Flow (3 مجاناً)</span>
-                </button>
-                <NavItem label="Storyboard" targetView="storyboard_studio" isMobile />
-                <NavItem label="Marketing" targetView="marketing_studio" isMobile />
-                <NavItem label="Photoshoot" targetView="photoshoot_director" isMobile />
-                <NavItem label="Edit" targetView="edit_studio" isMobile />
-                <NavItem label="Plan" targetView="plan_studio" isMobile />
-                <NavItem label="Campaign" targetView="campaign_studio" isMobile />
-                <NavItem label="Prompt" targetView="prompt_studio" isMobile />
-                <NavItem label="Voice" targetView="voice_over_studio" isMobile />
-                <NavItem label="Social Hub" targetView="social_hub_studio" isMobile />
-                <NavItem label="Vault" targetView="integrations_vault_studio" isMobile />
-            </div>
+      {/* Swipeable Mobile Studio Strips - Displayed exclusively inside authenticated studios */}
+      {view !== 'home' && googleUser && (
+        <div className="lg:hidden sticky top-14 z-30 w-full bg-[rgba(var(--color-background-base-rgb),0.96)] backdrop-blur-md border-b border-[rgba(var(--color-text-base-rgb),0.1)] flex items-center justify-center gap-1 px-2 py-1.5">
+             <button 
+                  onClick={() => scrollMobileNav('left')}
+                  className="p-1.5 rounded-full bg-[rgba(var(--color-text-base-rgb),0.05)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-base)] transition-colors shadow-sm"
+               >
+                  <ChevronLeftIcon />
+              </button>
+              <div 
+                  ref={mobileNavRef}
+                  className="flex items-center gap-1.5 overflow-x-auto suggestions-scrollbar scroll-smooth mask-linear-fade flex-1 py-0.5"
+              >
+                  <NavItem label="🏠 الرئيسية" targetView="home" isMobile />
+                  <NavItem label="Creator" targetView="creator_studio" isMobile />
+                  <NavItem label="CRM & Ads" targetView="omni_crm_studio" isMobile />
+                  <button
+                      onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Mobile Strip')}
+                      className="flex-shrink-0 px-2.5 py-1 text-xs font-black rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 whitespace-nowrap flex items-center gap-1 shadow-sm"
+                  >
+                      <span>🎬</span>
+                      <span>فيديو Flow</span>
+                  </button>
+                  <NavItem label="Storyboard" targetView="storyboard_studio" isMobile />
+                  <NavItem label="Marketing" targetView="marketing_studio" isMobile />
+                  <NavItem label="Photoshoot" targetView="photoshoot_director" isMobile />
+                  <NavItem label="Edit" targetView="edit_studio" isMobile />
+                  <NavItem label="Plan" targetView="plan_studio" isMobile />
+                  <NavItem label="Campaign" targetView="campaign_studio" isMobile />
+                  <NavItem label="Prompt" targetView="prompt_studio" isMobile />
+                  <NavItem label="Voice" targetView="voice_over_studio" isMobile />
+                  <NavItem label="Social Hub" targetView="social_hub_studio" isMobile />
+                  <NavItem label="Vault" targetView="integrations_vault_studio" isMobile />
+              </div>
 
-            <button 
-                onClick={() => scrollMobileNav('right')}
-                className="p-1.5 rounded-full bg-[rgba(var(--color-text-base-rgb),0.05)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-base)] transition-colors shadow-sm"
-             >
-                <ChevronRightIcon />
-            </button>
-      </div>
+              <button 
+                  onClick={() => scrollMobileNav('right')}
+                  className="p-1.5 rounded-full bg-[rgba(var(--color-text-base-rgb),0.05)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-base)] transition-colors shadow-sm"
+               >
+                  <ChevronRightIcon />
+              </button>
+        </div>
+      )}
 
-      <div ref={contentRef} className="w-full max-w-7xl flex-grow pt-4 sm:pt-8 pb-28 lg:pb-16 px-2 sm:px-4 z-10 overflow-hidden">
-        {/* Universal Fluid Navigation & Back Bar */}
-        <UniversalNavBar
-          currentView={view}
-          previousView={viewHistory.length > 0 ? viewHistory[viewHistory.length - 1] : null}
-          onNavigate={navigateToView}
-          onBack={navigateBack}
-          canGoBack={viewHistory.length > 0 || view !== 'creator_studio'}
-          googleUser={googleUser}
-          onOpenGoogleSignIn={() => setIsGoogleSignInOpen(true)}
-        />
+      <div ref={contentRef} className="w-full max-w-7xl flex-grow pt-2 sm:pt-6 pb-28 lg:pb-16 px-2 sm:px-4 z-10 overflow-hidden">
+        {/* Universal Fluid Navigation & Back Bar - Displayed exclusively inside authenticated studios */}
+        {view !== 'home' && googleUser && (
+          <UniversalNavBar
+            currentView={view}
+            previousView={viewHistory.length > 0 ? viewHistory[viewHistory.length - 1] : null}
+            onNavigate={navigateToView}
+            onBack={navigateBack}
+            canGoBack={viewHistory.length > 0 || view !== 'creator_studio'}
+            googleUser={googleUser}
+            onOpenGoogleSignIn={() => setIsGoogleSignInOpen(true)}
+            onOpenChatAgent={() => setIsChatModalOpen(true)}
+          />
+        )}
         {renderContent()}
         
         
@@ -1388,83 +1548,90 @@ function App() {
           </div>
         </footer>
       </div>
-
-      {/* Ergonomic Mobile Bottom Navigation Bar (Thumb-friendly) */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#090e17]/95 backdrop-blur-xl border-t border-cyan-500/20 px-2 py-1.5 flex items-center justify-around shadow-2xl" dir="rtl">
-        {viewHistory.length > 0 ? (
-          <button
-            onClick={navigateBack}
-            className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-cyan-300 bg-cyan-500/20 border border-cyan-400/50 active:scale-95 font-black shadow-md shadow-cyan-900/40 cursor-pointer"
-            title="رجوع للشاشة السابقة"
-          >
-            <span className="text-lg">↩</span>
-            <span className="text-[10px]">رجوع</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => navigateToView('creator_studio')}
-            className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all cursor-pointer ${view === 'creator_studio' ? 'text-cyan-400 font-bold scale-105' : 'text-white/60'}`}
-          >
-            <span className="text-lg">👑</span>
-            <span className="text-[10px]">الرئيسية</span>
-          </button>
-        )}
-
-        <button
-          onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Bottom Nav')}
-          className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all text-white/80 relative active:scale-95"
-        >
-          <span className="text-lg">🎬</span>
-          <span className="text-[10px]">فلو فيديو</span>
-          <span className="absolute -top-1 -right-1 px-1 rounded-full bg-emerald-500 text-[8px] text-white font-bold">
-            3
-          </span>
-        </button>
-
-        <button
-          onClick={() => setIsQuotaModalOpen(true)}
-          className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all text-white/80 active:scale-95"
-        >
-          <span className="text-lg">⚡</span>
-          <span className="text-[10px]">الكوتة</span>
-        </button>
-
-        <button
-          onClick={() => setIsStudioWorksOpen(true)}
-          className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all text-white/80 relative active:scale-95"
-        >
-          <span className="text-lg">🎨</span>
-          <span className="text-[10px]">أعمالي</span>
-          {studioWorksCount > 0 && (
-            <span className="absolute -top-1 -right-1 px-1 rounded-full bg-purple-600 text-[8px] text-white font-mono font-bold">
-              {studioWorksCount}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setIsMobileSidebarOpen(true)}
-          className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-xl text-cyan-300 bg-cyan-500/15 border border-cyan-400/40 active:scale-95 font-bold"
-        >
-          <span className="text-lg">☰</span>
-          <span className="text-[10px]">السادبار</span>
-        </button>
+      </div>
       </div>
 
-      {/* Universal Ergonomic Floating Navigation & Back Controller for All Devices */}
-      <FloatingQuickNav
-        currentView={view}
-        previousView={viewHistory.length > 0 ? viewHistory[viewHistory.length - 1] : null}
-        canGoBack={viewHistory.length > 0 || view !== 'creator_studio'}
-        onBack={navigateBack}
-        onNavigate={navigateToView}
-        onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
-      />
+      {/* Ergonomic Mobile Bottom Navigation Bar (Thumb-friendly) - Displayed exclusively inside authenticated studios */}
+      {view !== 'home' && googleUser && (
+        <>
+          <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#090e17]/95 backdrop-blur-xl border-t border-cyan-500/20 px-2 pt-1.5 pb-[env(safe-area-inset-bottom,0.75rem)] flex items-center justify-around shadow-2xl" dir="rtl">
+            {viewHistory.length > 0 ? (
+              <button
+                onClick={navigateBack}
+                className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl text-cyan-300 bg-cyan-500/20 border border-cyan-400/50 active:scale-95 font-black shadow-md shadow-cyan-900/40 cursor-pointer"
+                title="رجوع للشاشة السابقة"
+              >
+                <span className="text-lg">↩</span>
+                <span className="text-[10px]">رجوع</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => navigateToView('creator_studio')}
+                className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all cursor-pointer ${view === 'creator_studio' ? 'text-cyan-400 font-bold scale-105' : 'text-white/60'}`}
+              >
+                <span className="text-lg">👑</span>
+                <span className="text-[10px]">الاستوديو</span>
+              </button>
+            )}
 
-      {/* Autonomous Sales Closer & Negotiation Engine (Phase 2) */}
-      <ChatWidget />
+            <button
+              onClick={() => handleOpenVideoFlow(null, '', 'orbit_360', '9:16', 'Bottom Nav')}
+              className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all text-white/80 relative active:scale-95"
+            >
+              <span className="text-lg">🎬</span>
+              <span className="text-[10px]">فلو فيديو</span>
+              <span className="absolute -top-1 -right-1 px-1 rounded-full bg-emerald-500 text-[8px] text-white font-bold">
+                3
+              </span>
+            </button>
+
+            <button
+              onClick={() => setIsQuotaModalOpen(true)}
+              className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all text-white/80 active:scale-95"
+            >
+              <span className="text-lg">⚡</span>
+              <span className="text-[10px]">الكوتة</span>
+            </button>
+
+            <button
+              onClick={() => setIsStudioWorksOpen(true)}
+              className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-all text-white/80 relative active:scale-95"
+            >
+              <span className="text-lg">🎨</span>
+              <span className="text-[10px]">أعمالي</span>
+              {studioWorksCount > 0 && (
+                <span className="absolute -top-1 -right-1 px-1 rounded-full bg-purple-600 text-[8px] text-white font-mono font-bold">
+                  {studioWorksCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-xl text-cyan-300 bg-cyan-500/15 border border-cyan-400/40 active:scale-95 font-bold"
+            >
+              <span className="text-lg">☰</span>
+              <span className="text-[10px]">السادبار</span>
+            </button>
+          </div>
+
+        </>
+      )}
+
+      {/* Autonomous Sales Closer & Negotiation Engine (Phase 2 Modal - On Demand) */}
+      {isChatModalOpen && (
+        <ChatWidget isOpen={isChatModalOpen} onClose={() => setIsChatModalOpen(false)} />
+      )}
     </div>
   );
 }
 
-export default App;
+const RootApp: React.FC = () => {
+  return (
+    <BusinessMemoryProvider>
+      <App />
+    </BusinessMemoryProvider>
+  );
+};
+
+export default RootApp;

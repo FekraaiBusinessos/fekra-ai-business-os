@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ImageFile, HistoryItem } from '../types';
+import { resolveImageSrc } from '../utils';
 
 interface HistoryPanelProps {
   history: HistoryItem[];
@@ -49,8 +50,9 @@ const HistoryPanel: React.FC<HistoryPanelProps> = ({ history, onSelect }) => {
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(item.image); }}
             >
               <img
-                src={`data:${item.image.mimeType};base64,${item.image.base64}`}
+                src={resolveImageSrc(item.image)}
                 alt={`Generated image ${index + 1}`}
+                referrerPolicy="no-referrer"
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2 pointer-events-none">

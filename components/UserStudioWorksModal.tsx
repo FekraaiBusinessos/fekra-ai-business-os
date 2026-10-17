@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StudioWorkItem, ImageFile } from '../types';
+import { resolveImageSrc } from '../utils';
 import { 
   getStudioWorks, 
   deleteStudioWork, 
@@ -105,9 +106,9 @@ export const UserStudioWorksModal: React.FC<UserStudioWorksModalProps> = ({
 
   const handleDownloadImage = (e: React.MouseEvent, item: StudioWorkItem) => {
     e.stopPropagation();
-    if (!item.image?.base64) return;
+    if (!item.image) return;
     const link = document.createElement('a');
-    link.href = `data:${item.image.mimeType || 'image/png'};base64,${item.image.base64}`;
+    link.href = resolveImageSrc(item.image);
     link.download = `fekra-work-${item.title || 'creation'}-${item.id.slice(-6)}.png`;
     document.body.appendChild(link);
     link.click();
@@ -288,8 +289,9 @@ export const UserStudioWorksModal: React.FC<UserStudioWorksModalProps> = ({
                     <div className="relative aspect-square w-full bg-black/60 overflow-hidden">
                       {item.image?.base64 ? (
                         <img
-                          src={`data:${item.image.mimeType || 'image/png'};base64,${item.image.base64}`}
+                          src={resolveImageSrc(item.image)}
                           alt={item.title || item.prompt}
+                          referrerPolicy="no-referrer"
                           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                           loading="lazy"
                         />
@@ -455,8 +457,9 @@ export const UserStudioWorksModal: React.FC<UserStudioWorksModalProps> = ({
                 <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/60 shadow-xl">
                   {selectedWork.image?.base64 ? (
                     <img
-                      src={`data:${selectedWork.image.mimeType || 'image/png'};base64,${selectedWork.image.base64}`}
+                      src={resolveImageSrc(selectedWork.image)}
                       alt={selectedWork.title || selectedWork.prompt}
+                      referrerPolicy="no-referrer"
                       className="w-full h-auto max-h-[450px] object-contain mx-auto"
                     />
                   ) : selectedWork.audio?.base64 ? (

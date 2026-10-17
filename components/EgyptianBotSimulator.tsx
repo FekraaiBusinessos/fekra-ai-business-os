@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SocialConnectedAccount, SocialPlatformId } from '../types';
 import { getAuthHeaders } from '../services/googleAuthService';
 
@@ -6,6 +6,21 @@ interface EgyptianBotSimulatorProps {
   accounts: SocialConnectedAccount[];
   onToggleAutoReply?: (platformId: SocialPlatformId, currentState: boolean) => void;
   onOpenConnectModal?: (platformId: SocialPlatformId) => void;
+}
+
+export interface ClosedDealData {
+  invoiceNumber: string;
+  invoiceId: number;
+  customerName: string;
+  customerPhone?: string;
+  productName: string;
+  quantity: number;
+  totalAmountSar: string;
+  remainingStock: number;
+  zatcaQrCode: string;
+  publicInvoiceUrl: string;
+  whatsAppShareUrl: string;
+  paymentMethod: string;
 }
 
 interface SimulatedMessage {
@@ -18,6 +33,7 @@ interface SimulatedMessage {
   suggestedAction?: string;
   intent?: string;
   latencyMs?: number;
+  dealInvoice?: ClosedDealData;
 }
 
 const PRESET_SCENARIOS = [
@@ -56,6 +72,13 @@ const PRESET_SCENARIOS = [
     message: 'مساء الخير، لسه شايف البوست وعجبني جداً بس متردد شوية..',
     badge: 'فتح كلام وإغلاق بيع 🤝',
   },
+  {
+    title: 'موافقة فورية وطلب إتمام الشراء',
+    platform: 'whatsapp' as SocialPlatformId,
+    customer: 'خالد عبد الله السعيد',
+    message: 'تمام جداً يا فندم، أنا موافق ومقتنع تماماً! اعتمد لي قطعتين على الرياض وابعتلي الفاتورة ورابط الدفع بسرعة.',
+    badge: 'حسم وإغلاق فوري ⚡',
+  },
 ];
 
 export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
@@ -69,6 +92,35 @@ export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
   const [businessField, setBusinessField] = useState<string>('متجر تجزئة وأزياء وإلكترونيات راقية');
   const [botTone, setBotTone] = useState<'traditional' | 'diplomatic' | 'hyper_sales'>('traditional');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [inventoryList, setInventoryList] = useState<any[]>([]);
+  const [selectedProductForDeal, setSelectedProductForDeal] = useState<any | null>(null);
+  const [dealQuantity, setDealQuantity] = useState<number>(1);
+  const [dealDiscount, setDealDiscount] = useState<number>(0);
+  const [dealCustomerPhone, setDealCustomerPhone] = useState<string>('966501234567');
+  const [dealPaymentMethod, setDealPaymentMethod] = useState<string>('mada');
+  const [isCloseDealModalOpen, setIsCloseDealModalOpen] = useState<boolean>(false);
+  const [isClosingDeal, setIsClosingDeal] = useState<boolean>(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+
+  // Fetch real inventory on component mount
+  useEffect(() => {
+    const fetchInventory = async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch('/api/execution/inventory', { headers });
+        if (res.ok) {
+          const items = await res.json();
+          if (Array.isArray(items) && items.length > 0) {
+            setInventoryList(items);
+            setSelectedProductForDeal(items[0]);
+          }
+        }
+      } catch (e) {
+        console.warn('[EgyptianBot] Inventory fetch error:', e);
+      }
+    };
+    fetchInventory();
+  }, []);
 
   const [conversation, setConversation] = useState<SimulatedMessage[]>([
     {
@@ -90,6 +142,87 @@ export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
       latencyMs: 38,
     },
   ]);
+
+  const handleExecuteCloseDeal = async () => {
+    setIsClosingDeal(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/chat/close-deal', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          customerName,
+          customerPhone: dealCustomerPhone,
+          productId: selectedProductForDeal?.id,
+          quantity: dealQuantity,
+          customDiscountPercent: dealDiscount,
+          paymentMethod: dealPaymentMethod,
+          platform: selectedPlatform,
+          agentName: 'المعلم فكرة (Smart Closer)',
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        const botDealMsg: SimulatedMessage = {
+          id: `bot-deal-${Date.now()}`,
+          sender: 'bot',
+          platformId: selectedPlatform,
+          text: data.closingMessage,
+          timestamp: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+          trigger: 'إغلاق الصفقة وحسم البيع (Instant Deal Closure)',
+          suggestedAction: 'تم إصدار الفاتورة الضريبية وحجز المخزون بنجاح ✓',
+          intent: 'deal_closed',
+          latencyMs: 24,
+          dealInvoice: {
+            invoiceNumber: data.invoiceNumber,
+            invoiceId: data.invoiceId,
+            customerName: data.customerName,
+            customerPhone: data.customerPhone,
+            productName: data.productName,
+            quantity: data.quantity,
+            totalAmountSar: data.totalAmountSar,
+            remainingStock: data.remainingStock,
+            zatcaQrCode: data.zatcaQrCode,
+            publicInvoiceUrl: data.publicInvoiceUrl,
+            whatsAppShareUrl: data.whatsAppShareUrl,
+            paymentMethod: data.paymentMethod || 'mada',
+          },
+        };
+
+        setConversation((prev) => [...prev, botDealMsg]);
+        setIsCloseDealModalOpen(false);
+
+        // Update local inventory remaining stock
+        if (selectedProductForDeal) {
+          setInventoryList((prev) =>
+            prev.map((item) =>
+              item.id === selectedProductForDeal.id
+                ? { ...item, stockQuantity: data.remainingStock }
+                : item
+            )
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Failed to close deal:', err);
+    } finally {
+      setIsClosingDeal(false);
+    }
+  };
+
+  const handleCopyInvoiceDetails = (inv: ClosedDealData) => {
+    const text = `🧾 فاتورة ضريبية مبسطة معتمدة (ZATCA)\n` +
+      `رقم الفاتورة: ${inv.invoiceNumber}\n` +
+      `العميل: ${inv.customerName}\n` +
+      `المنتج: ${inv.productName} (الكمية: ${inv.quantity})\n` +
+      `المبلغ الإجمالي (شامل الضريبة 15%): ${inv.totalAmountSar} ر.س\n` +
+      `المتبقي في المستودع: ${inv.remainingStock} قطعة\n` +
+      `رابط الفاتورة الرسمية: ${window.location.origin}${inv.publicInvoiceUrl}`;
+    navigator.clipboard.writeText(text);
+    setCopyFeedback(inv.invoiceNumber);
+    setTimeout(() => setCopyFeedback(null), 3000);
+  };
 
   const currentAccount = accounts.find((a) => a.id === selectedPlatform) || accounts[0];
   const isAutoReplyActive = currentAccount?.autoReply ?? true;
@@ -450,6 +583,15 @@ export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => setIsCloseDealModalOpen(true)}
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-xs font-black border border-emerald-400/40 shadow-lg shadow-emerald-950/50 flex items-center gap-1.5 transition-all cursor-pointer transform hover:scale-[1.02] active:scale-[0.98]"
+                  title="حسم البيع وإصدار فاتورة ZATCA المعتمدة وحجز المخزون فورياً"
+                >
+                  <span className="text-sm">⚡</span>
+                  <span>إغلاق الصفقة وإصدار فاتورة ZATCA</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setConversation([])}
                   className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 hover:text-white text-xs font-bold border border-white/10 transition-colors"
                   title="مسح المحادثة وبدء محاكاة جديدة"
@@ -514,6 +656,118 @@ export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
                             )}
                           </div>
                         )}
+
+                        {/* Instant Deal Closer Trigger Button inside bot reply */}
+                        {isBot && !msg.dealInvoice && (
+                          <div className="mt-3 pt-2 border-t border-purple-500/20">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsCloseDealModalOpen(true);
+                              }}
+                              className="w-full text-right px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-black flex items-center justify-between transition-all group cursor-pointer"
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <span>⚡</span>
+                                <span>العميل مقتنع؟ اضغط لحسم الصفقة وإصدار فاتورة ZATCA فوراً</span>
+                              </span>
+                              <span className="text-[10px] bg-emerald-500/30 px-2 py-0.5 rounded-lg text-emerald-200 group-hover:scale-105 transition-transform">
+                                حسم البيع 🚀
+                              </span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Official ZATCA Tax Invoice Embedded Card */}
+                        {msg.dealInvoice && (
+                          <div className="mt-3 p-4 rounded-2xl bg-[#0e1726] border-2 border-emerald-500/50 shadow-2xl space-y-3 animate-in zoom-in-95 duration-200">
+                            <div className="flex items-center justify-between border-b border-emerald-500/30 pb-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xl">🧾</span>
+                                <div>
+                                  <span className="text-xs font-black text-emerald-300 block">
+                                    فاتورة ضريبية مبسطة معتمدة (ZATCA)
+                                  </span>
+                                  <span className="text-[10px] text-white/50 font-mono">
+                                    {msg.dealInvoice.invoiceNumber}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-black border border-emerald-500/40">
+                                مدفوعة ومحسومة ✓
+                              </span>
+                            </div>
+
+                            {/* Middle Section: QR Code & Line Items */}
+                            <div className="flex items-center gap-4 bg-black/40 p-3 rounded-xl border border-white/5">
+                              <div className="shrink-0 bg-white p-1 rounded-xl shadow-md">
+                                <img
+                                  src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+                                    msg.dealInvoice.zatcaQrCode
+                                  )}`}
+                                  alt="ZATCA TLV QR Code"
+                                  className="w-20 h-20 rounded-lg"
+                                />
+                                <span className="block text-[8px] text-center text-black/70 font-mono mt-0.5 font-bold">
+                                  ZATCA TLV
+                                </span>
+                              </div>
+
+                              <div className="flex-1 space-y-1 text-xs">
+                                <div className="flex justify-between text-white/70">
+                                  <span>المنتج:</span>
+                                  <span className="font-bold text-white">{msg.dealInvoice.productName}</span>
+                                </div>
+                                <div className="flex justify-between text-white/70">
+                                  <span>الكمية:</span>
+                                  <span className="font-bold text-white">{msg.dealInvoice.quantity} قطعة</span>
+                                </div>
+                                <div className="flex justify-between text-white/70">
+                                  <span>المخزون المتبقي:</span>
+                                  <span className="font-bold text-amber-300">{msg.dealInvoice.remainingStock} قطعة</span>
+                                </div>
+                                <div className="flex justify-between text-white/70 pt-1 border-t border-white/10">
+                                  <span className="font-bold text-white">الإجمالي (شامل 15%):</span>
+                                  <span className="font-black text-emerald-400 text-sm font-mono">
+                                    {msg.dealInvoice.totalAmountSar} ر.س
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                              <a
+                                href={msg.dealInvoice.publicInvoiceUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 text-[11px] font-black border border-purple-500/40 text-center flex items-center justify-center gap-1 transition-all"
+                              >
+                                <span>📄</span>
+                                <span>عرض الفاتورة</span>
+                              </a>
+
+                              <a
+                                href={msg.dealInvoice.whatsAppShareUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 text-[11px] font-black border border-emerald-500/40 text-center flex items-center justify-center gap-1 transition-all"
+                              >
+                                <span>💬</span>
+                                <span>إرسال واتساب</span>
+                              </a>
+
+                              <button
+                                type="button"
+                                onClick={() => handleCopyInvoiceDetails(msg.dealInvoice!)}
+                                className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-[11px] font-black border border-white/20 text-center flex items-center justify-center gap-1 transition-all"
+                              >
+                                <span>📋</span>
+                                <span>{copyFeedback === msg.dealInvoice.invoiceNumber ? 'تم النسخ ✓' : 'نسخ الرابط'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -530,6 +784,22 @@ export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
               )}
             </div>
 
+            {/* Quick Deal Prompt Bar */}
+            <div className="px-4 py-2 bg-gradient-to-r from-emerald-950/40 to-[#100f1c] border-t border-emerald-500/20 flex items-center justify-between text-xs">
+              <span className="text-white/60 flex items-center gap-1.5">
+                <span className="text-amber-400">💡</span>
+                <span>تريد إتمام البيع بنقرة واحدة؟</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsCloseDealModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-black text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+              >
+                <span>⚡</span>
+                <span>إصدار فاتورة وحجز المخزون</span>
+              </button>
+            </div>
+
             {/* Chat Input Box */}
             <div className="p-3 sm:p-4 bg-[#141220] border-t border-white/10 space-y-2">
               <form
@@ -543,7 +813,7 @@ export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
                   type="text"
                   value={customInput}
                   onChange={(e) => setCustomInput(e.target.value)}
-                  placeholder="اكتب رسالة من العميل (مثال: بكام، خايف من الجودة، الشحن بياخد أد إيه؟)..."
+                  placeholder="اكتب رسالة من العميل (مثال: بكام، خايف من الجودة، اعتمد لي قطعتين)..."
                   className="flex-1 px-4 py-3 rounded-2xl bg-black/50 border border-white/10 text-white text-xs sm:text-sm focus:outline-none focus:border-purple-500"
                   disabled={isLoading}
                 />
@@ -551,7 +821,7 @@ export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
                 <button
                   type="submit"
                   disabled={isLoading || !customInput.trim()}
-                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 text-white text-xs sm:text-sm font-black shadow-lg shadow-amber-950/40 disabled:opacity-50 transition-all flex items-center gap-1.5 shrink-0"
+                  className="px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-purple-600 hover:from-amber-400 hover:to-purple-500 text-white text-xs sm:text-sm font-black shadow-lg shadow-amber-950/40 disabled:opacity-50 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
                 >
                   <span>إرسال</span>
                   <span>🚀</span>
@@ -569,6 +839,245 @@ export const EgyptianBotSimulator: React.FC<EgyptianBotSimulatorProps> = ({
         </div>
 
       </div>
+
+      {/* ========================================================================= */}
+      {/* MODAL: Instant Deal Closer & ZATCA Invoice Generator (Milestone 1 Core)   */}
+      {/* ========================================================================= */}
+      {isCloseDealModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-xl rounded-3xl bg-[#111019] border-2 border-emerald-500/40 shadow-2xl overflow-hidden space-y-5 p-6 sm:p-7">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-2xl shadow-lg shadow-emerald-950/50">
+                  ⚡
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <span>حسم الصفقة وإصدار فاتورة ZATCA</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                      حجز فوري للمخزون
+                    </span>
+                  </h3>
+                  <p className="text-xs text-white/60">
+                    خصم الكمية من مخزون PostgreSQL وإصدار الفاتورة الضريبية وتوليد رابط الدفع
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsCloseDealModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white/70 hover:text-white flex items-center justify-center text-sm transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <div className="space-y-4 text-xs">
+              
+              {/* Customer Info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-white/70 font-bold block mb-1">اسم العميل:</label>
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-white font-bold focus:border-emerald-500 focus:outline-none"
+                    placeholder="اسم العميل الكامل"
+                  />
+                </div>
+                <div>
+                  <label className="text-white/70 font-bold block mb-1">رقم الواتساب / الجوال:</label>
+                  <input
+                    type="text"
+                    value={dealCustomerPhone}
+                    onChange={(e) => setDealCustomerPhone(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-white font-mono focus:border-emerald-500 focus:outline-none"
+                    placeholder="966501234567"
+                  />
+                </div>
+              </div>
+
+              {/* Product Picker */}
+              <div>
+                <label className="text-white/70 font-bold block mb-1">المنتج المراد بيعه من المخزون:</label>
+                {inventoryList.length > 0 ? (
+                  <select
+                    value={selectedProductForDeal?.id || ''}
+                    onChange={(e) => {
+                      const found = inventoryList.find((p) => p.id === Number(e.target.value));
+                      if (found) setSelectedProductForDeal(found);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-white font-bold focus:border-emerald-500 focus:outline-none"
+                  >
+                    {inventoryList.map((prod) => (
+                      <option key={prod.id} value={prod.id}>
+                        {prod.nameAr || prod.name} — السعر: {(prod.unitPrice / 100).toFixed(2)} ر.س (المتوفر: {prod.stockQuantity} قطعة)
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-white/60">
+                    جاري تحميل المخزون أو سيتم استخدام منتج العطور الملكي الافتراضي...
+                  </div>
+                )}
+              </div>
+
+              {/* Quantity & Discount */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-white/70 font-bold block mb-1">الكمية المطلوبة:</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDealQuantity((q) => Math.max(1, q - 1))}
+                      className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white font-black text-sm"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="number"
+                      min={1}
+                      max={selectedProductForDeal?.stockQuantity || 100}
+                      value={dealQuantity}
+                      onChange={(e) => setDealQuantity(Math.max(1, Number(e.target.value) || 1))}
+                      className="flex-1 px-3.5 py-2 rounded-xl bg-black/50 border border-white/10 text-white text-center font-bold font-mono focus:border-emerald-500 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setDealQuantity((q) => q + 1)}
+                      className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white font-black text-sm"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-white/70 font-bold block mb-1">نسبة الخصم الاستثنائي (إن وجد):</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[0, 5, 10, 15].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setDealDiscount(pct)}
+                        className={`py-2 rounded-xl font-bold border transition-all ${
+                          dealDiscount === pct
+                            ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500'
+                            : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                        }`}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment Method Selector */}
+              <div>
+                <label className="text-white/70 font-bold block mb-1">طريقة الدفع المتفق عليها:</label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {[
+                    { id: 'mada', label: 'مدى Mada' },
+                    { id: 'apple_pay', label: 'Apple Pay' },
+                    { id: 'stc_pay', label: 'STC Pay' },
+                    { id: 'bank_transfer', label: 'تحويل بنكي' },
+                    { id: 'cod', label: 'الدفع عند الاستلام' },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setDealPaymentMethod(m.id)}
+                      className={`p-2 rounded-xl text-[11px] font-bold border text-center transition-all ${
+                        dealPaymentMethod === m.id
+                          ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500'
+                          : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Calculation Box */}
+              {(() => {
+                const unitPriceSar = selectedProductForDeal ? selectedProductForDeal.unitPrice / 100 : 390;
+                const discountedUnit = unitPriceSar * (1 - dealDiscount / 100);
+                const subtotal = discountedUnit * dealQuantity;
+                const tax = subtotal * 0.15;
+                const total = subtotal + tax;
+
+                return (
+                  <div className="p-3.5 rounded-2xl bg-black/60 border border-emerald-500/30 space-y-2">
+                    <div className="flex justify-between text-white/60">
+                      <span>سعر الوحدة الأساسي:</span>
+                      <span className="font-mono">{unitPriceSar.toFixed(2)} ر.س</span>
+                    </div>
+                    {dealDiscount > 0 && (
+                      <div className="flex justify-between text-amber-300">
+                        <span>الخصم المطبق ({dealDiscount}%):</span>
+                        <span className="font-mono">- {((unitPriceSar * (dealDiscount / 100)) * dealQuantity).toFixed(2)} ر.س</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-white/60">
+                      <span>المجموع الفرعي ({dealQuantity} قطع):</span>
+                      <span className="font-mono">{subtotal.toFixed(2)} ر.س</span>
+                    </div>
+                    <div className="flex justify-between text-white/60">
+                      <span>ضريبة القيمة المضافة (15% ZATCA):</span>
+                      <span className="font-mono">{tax.toFixed(2)} ر.س</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-white/10 text-white font-black text-sm">
+                      <span className="text-emerald-300">المبلغ الإجمالي المستحق:</span>
+                      <span className="text-emerald-400 font-mono text-base font-black">
+                        {total.toFixed(2)} ر.س
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isClosingDeal}
+                onClick={handleExecuteCloseDeal}
+                className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-sm shadow-xl shadow-emerald-950/60 flex items-center justify-center gap-2 disabled:opacity-50 transition-all cursor-pointer"
+              >
+                {isClosingDeal ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>جاري حسم الصفقة وإصدار الفاتورة الضريبية...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>⚡</span>
+                    <span>حسم الصفقة وإصدار الفاتورة وحجز المخزون الآن</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsCloseDealModalOpen(false)}
+                className="py-3.5 px-5 rounded-2xl bg-white/10 hover:bg-white/20 text-white/70 hover:text-white font-bold text-xs transition-all"
+              >
+                إلغاء
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

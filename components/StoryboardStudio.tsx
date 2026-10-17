@@ -1,7 +1,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { StoryboardStudioProject, ImageFile, StoryboardScene } from '../types';
-import { resizeImage } from '../utils';
+import { resizeImage, resolveImageSrc } from '../utils';
 import { generateStoryboardPlan, generateImage } from '../services/geminiService';
 import { validateQuotaUsage } from '../services/quotaGuard';
 import ImageWorkspace from './ImageWorkspace';
@@ -164,7 +164,7 @@ const StoryboardStudio: React.FC<StoryboardStudioProps> = ({ project, setProject
 
     const handleDownload = (image: ImageFile, label: string) => {
         const link = document.createElement('a');
-        link.href = `data:${image.mimeType};base64,${image.base64}`;
+        link.href = resolveImageSrc(image);
         link.download = `Fekra ai-Storyboard-${label.replace(/\s+/g, '-')}-${Date.now()}.png`;
         document.body.appendChild(link);
         link.click();
@@ -279,7 +279,7 @@ const StoryboardStudio: React.FC<StoryboardStudioProps> = ({ project, setProject
                         </button>
                     </div>
                     <div className={`glass-card rounded-[2rem] overflow-hidden border border-white/10 shadow-2xl relative ${project.aspectRatio === '9:16' ? 'max-w-md mx-auto aspect-[9/16]' : 'aspect-video'}`}>
-                        <img src={`data:${project.gridImage.mimeType};base64,${project.gridImage.base64}`} alt="Storyboard Grid" className="w-full h-full object-cover" />
+                        <img src={resolveImageSrc(project.gridImage)} alt="Storyboard Grid" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                         <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded-full text-[9px] font-black text-white/80 border border-white/10 backdrop-blur-md">3x3 LOW-RES PREVIEW</div>
                         <div className="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
                              <button 
@@ -306,7 +306,7 @@ const StoryboardStudio: React.FC<StoryboardStudioProps> = ({ project, setProject
                                     </div>
                                 ) : scene.image ? (
                                     <div className="w-full h-full relative group/img">
-                                        <img src={`data:${scene.image.mimeType};base64,${scene.image.base64}`} alt={`Scene ${idx+1}`} className="w-full h-full object-cover" />
+                                        <img src={resolveImageSrc(scene.image)} alt={`Scene ${idx+1}`} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-4">
                                             <button 
                                                 onClick={() => handleDownload(scene.image!, `Scene-${idx+1}`)} 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getGoogleUser, getAuthHeaders, subscribeGoogleAuth } from '../services/googleAuthService';
+import { fetchMetaAuthUrl, openMetaOAuthPopup, subscribeToMetaAuthCallback, getMetaCallbackUri } from '../services/metaOAuthService';
 import GoogleSignInModal from './GoogleSignInModal';
 import { GoogleUserProfile } from '../types';
 
@@ -44,8 +45,11 @@ export const IntegrationsVaultStudio: React.FC = () => {
     telegram: '',
     meta: '',
     metaPageId: '',
+    metaAppId: '',
     whatsapp: '',
     whatsappPhoneId: '',
+    fal: '',
+    replicate: '',
   });
 
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
@@ -53,8 +57,9 @@ export const IntegrationsVaultStudio: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
-  // Facebook One-Click Connect State
-  const [isFbLoggingIn, setIsFbLoggingIn] = useState(false);
+  // Facebook & WhatsApp Meta OAuth State
+  const [isMetaOAuthLoading, setIsMetaOAuthLoading] = useState(false);
+  const [copiedMetaRedirectUri, setCopiedMetaRedirectUri] = useState(false);
   const [availableFbPages, setAvailableFbPages] = useState<Array<{ id: string; name: string; access_token: string; category?: string }>>([]);
   const [showFbPageModal, setShowFbPageModal] = useState(false);
   const [isSelectingPage, setIsSelectingPage] = useState(false);
@@ -181,38 +186,30 @@ export const IntegrationsVaultStudio: React.FC = () => {
     }
   };
 
-  // One-Click Facebook Login Dialog Handler (Meta JS SDK)
-  const handleFacebookOneClickConnect = () => {
-    setIsFbLoggingIn(true);
-    showToast('جارٍ تشغيل نافذة مصادقة Facebook الرسمية...');
+  // Live Meta Business OAuth 2.0 Handler (Zero-Mock Browser Popup)
+  const handleConnectMetaBusinessLive = async () => {
+    setIsMetaOAuthLoading(true);
+    showToast('جارٍ تشغيل نافذة Meta Business Login الرسمية...');
 
-    if (typeof window !== 'undefined' && (window as any).FB) {
-      try {
-        (window as any).FB.login((response: any) => {
-          if (response && response.authResponse && response.authResponse.accessToken) {
-            exchangeFacebookToken(response.authResponse.accessToken);
-          } else {
-            setIsFbLoggingIn(false);
-            showToast('تم إلغاء تسجيل الدخول أو لم يتم منح صلاحيات إدارة الصفحات');
-          }
-        }, { scope: 'pages_show_list,pages_messaging,pages_manage_metadata,pages_read_engagement' });
-      } catch (err) {
-        console.warn('[Meta SDK] Direct login error, fallback to prompt:', err);
-        fallbackFbTokenExchange();
-      }
-    } else {
-      fallbackFbTokenExchange();
-    }
-  };
+    try {
+      const { url } = await fetchMetaAuthUrl(undefined, inputs.metaAppId);
+      const popup = openMetaOAuthPopup(url);
 
-  const fallbackFbTokenExchange = () => {
-    const inputToken = window.prompt(
-      'نافذة Facebook SDK الرسمية جاري تحميلها. يمكنك إدخال User Access Token أو Page Token الخاص بفيسبوك هنا للاستبدال الفوري بتوكن دائم:'
-    );
-    if (inputToken && inputToken.trim()) {
-      exchangeFacebookToken(inputToken.trim());
-    } else {
-      setIsFbLoggingIn(false);
+      subscribeToMetaAuthCallback(
+        popup,
+        (data) => {
+          setIsMetaOAuthLoading(false);
+          showToast(`✓ تم ربط صفحة ${data.pageName || 'فيسبوك'} وواتساب للأعمال بنجاح! 🚀`);
+          loadVaultData();
+        },
+        (errorMsg) => {
+          setIsMetaOAuthLoading(false);
+          showToast(`⚠️ ${errorMsg}`);
+        }
+      );
+    } catch (err: any) {
+      setIsMetaOAuthLoading(false);
+      showToast(err.message || 'فشل فتح نافذة مصادقة Meta');
     }
   };
 
@@ -240,7 +237,7 @@ export const IntegrationsVaultStudio: React.FC = () => {
     } catch (err) {
       showToast('حدث خطأ أثناء تبادل التوكن مع الخادم');
     } finally {
-      setIsFbLoggingIn(false);
+      setIsMetaOAuthLoading(false);
     }
   };
 
@@ -621,21 +618,55 @@ export const IntegrationsVaultStudio: React.FC = () => {
               </div>
             )}
 
-            {/* Primary One-Click Connect Facebook Button */}
-            <div className="pt-1">
+            {/* Primary Meta Business & WhatsApp Live Connect Button */}
+            <div className="pt-1 flex flex-col gap-2.5">
               <button
                 type="button"
-                onClick={handleFacebookOneClickConnect}
-                disabled={isFbLoggingIn}
-                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 active:scale-95 text-white font-black text-xs sm:text-sm shadow-xl shadow-blue-900/30 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50"
+                onClick={handleConnectMetaBusinessLive}
+                disabled={isMetaOAuthLoading}
+                className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-[#1877F2] via-[#0084FF] to-[#00C6FF] hover:opacity-95 active:scale-98 text-white font-black text-xs sm:text-sm shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
               >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                </svg>
-                <span>
-                  {isFbLoggingIn ? 'جارٍ الاتصال بنافذة Facebook الرسمية...' : 'ربط صفحة فيسبوك بضغطة زر (Connect Facebook Page)'}
-                </span>
+                {isMetaOAuthLoading ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>جارٍ تشغيل نافذة Meta Business Login...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 fill-current flex-shrink-0" viewBox="0 0 24 24">
+                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                    </svg>
+                    <span>ربط فيسبوك وواتساب للأعمال (Connect Meta Business)</span>
+                  </>
+                )}
               </button>
+
+              {/* Exact Valid OAuth Redirect URI with 1-click copy */}
+              <div className="p-3 rounded-2xl bg-blue-950/30 border border-blue-500/20 text-xs flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-blue-300 flex items-center gap-1">
+                    <span>🔗</span>
+                    <span>رابط إعادة التوجيه الإلزامي (Valid OAuth Redirect URI):</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(getMetaCallbackUri());
+                      setCopiedMetaRedirectUri(true);
+                      setTimeout(() => setCopiedMetaRedirectUri(false), 2000);
+                    }}
+                    className="px-2 py-0.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 text-[10px] font-mono font-bold transition-colors"
+                  >
+                    {copiedMetaRedirectUri ? '✓ تم النسخ' : 'نسخ الرابط'}
+                  </button>
+                </div>
+                <div className="p-2 rounded-xl bg-black/60 text-slate-300 font-mono text-[10px] break-all select-all text-left" dir="ltr">
+                  {getMetaCallbackUri()}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  ضع هذا الرابط في <span className="text-cyan-300 font-mono">developers.facebook.com &gt; Facebook Login for Business &gt; Settings &gt; Valid OAuth Redirect URIs</span>.
+                </p>
+              </div>
             </div>
 
             {/* Expandable Manual / Advanced Settings */}
@@ -650,6 +681,18 @@ export const IntegrationsVaultStudio: React.FC = () => {
 
               {showManualMetaSettings && (
                 <div className="mt-3 p-3.5 rounded-2xl bg-black/60 border border-white/10 space-y-3 animate-in fade-in duration-150">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-white/60 block">معرف تطبيق Meta المخصص (App ID - اختياري للتوجيه بتطبيقك الخاص):</label>
+                    <input
+                      type="text"
+                      value={inputs.metaAppId}
+                      onChange={e => setInputs(prev => ({ ...prev, metaAppId: e.target.value }))}
+                      placeholder="e.g. 10998877665544"
+                      className="w-full bg-black/80 border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono text-left"
+                      dir="ltr"
+                    />
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-white/60 block">معرف الصفحة (Page ID):</label>
@@ -711,13 +754,24 @@ export const IntegrationsVaultStudio: React.FC = () => {
                 </div>
               </div>
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                keys.whatsapp?.status === 'active' 
+                keys.whatsapp?.status === 'active' || keys.whatsapp?.status === 'connected'
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
                   : 'bg-white/5 text-white/40 border-white/10'
               }`}>
-                {keys.whatsapp?.status === 'active' ? 'مفتاح نشط وموثق 🟢' : 'غير مهيأ ⚪'}
+                {keys.whatsapp?.status === 'active' || keys.whatsapp?.status === 'connected' ? 'مفتاح نشط وموثق 🟢' : 'غير مهيأ ⚪'}
               </span>
             </div>
+
+            {/* Quick Meta OAuth Connect Shortcut for WhatsApp */}
+            <button
+              type="button"
+              onClick={handleConnectMetaBusinessLive}
+              disabled={isMetaOAuthLoading}
+              className="w-full py-2.5 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all flex items-center justify-center gap-2"
+            >
+              <span>⚡</span>
+              <span>ربط WABA تلقائياً مع حساب Meta Business (نافذة واحدة)</span>
+            </button>
 
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
@@ -759,6 +813,126 @@ export const IntegrationsVaultStudio: React.FC = () => {
                 className="py-2 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs shadow-md transition-all disabled:opacity-30"
               >
                 حفظ وتشفير
+              </button>
+            </div>
+          </div>
+
+          {/* Card 5: Fal.ai API Key (Wan 2.1 8K Video Engine) */}
+          <div className="p-6 rounded-3xl bg-[#111019] border border-amber-500/20 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🎬</span>
+                <div>
+                  <h3 className="text-sm font-black text-white">Fal.ai API Key (Wan 2.1 Engine)</h3>
+                  <span className="text-[10px] text-amber-400/70">Serverless GPU • رندرة الفيديو السينمائي 8K</span>
+                </div>
+              </div>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                keys.fal?.status === 'active' 
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                  : 'bg-white/5 text-white/40 border-white/10'
+              }`}>
+                {keys.fal?.status === 'active' ? 'مفتاح نشط 🟢' : 'اختياري (Fekra Fallback) ⚪'}
+              </span>
+            </div>
+
+            {keys.fal?.keyIdentifier && (
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-xs font-mono">
+                <span className="text-white/60">المفتاح الحالي:</span>
+                <span className="text-amber-300">{keys.fal.keyIdentifier}</span>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-white/70 block">
+                مفتاح Fal.ai السري (key_...):
+              </label>
+              <div className="relative">
+                <input
+                  type={showSecrets.fal ? 'text' : 'password'}
+                  value={inputs.fal}
+                  onChange={e => setInputs(prev => ({ ...prev, fal: e.target.value }))}
+                  placeholder="key_..."
+                  className="w-full bg-black/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400 font-mono text-left"
+                  dir="ltr"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecrets(prev => ({ ...prev, fal: !prev.fal }))}
+                  className="absolute left-3 top-2.5 text-xs text-white/40 hover:text-white"
+                >
+                  {showSecrets.fal ? 'إخفاء 👁️' : 'إظهار 👁️'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => handleSaveKey('fal')}
+                disabled={!inputs.fal}
+                className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:opacity-95 text-white font-black text-xs shadow-md transition-all disabled:opacity-30"
+              >
+                حفظ وتشفير مفتاح Fal.ai
+              </button>
+            </div>
+          </div>
+
+          {/* Card 6: Replicate API Token (Seedance 2.0 Engine) */}
+          <div className="p-6 rounded-3xl bg-[#111019] border border-purple-500/20 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">💃</span>
+                <div>
+                  <h3 className="text-sm font-black text-white">Replicate API Token (Seedance 2.0)</h3>
+                  <span className="text-[10px] text-purple-400/70">Serverless GPU • مزامنة حركة الشخصيات وتفاعل الموديل</span>
+                </div>
+              </div>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                keys.replicate?.status === 'active' 
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
+                  : 'bg-white/5 text-white/40 border-white/10'
+              }`}>
+                {keys.replicate?.status === 'active' ? 'مفتاح نشط 🟢' : 'اختياري (Fekra Fallback) ⚪'}
+              </span>
+            </div>
+
+            {keys.replicate?.keyIdentifier && (
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between text-xs font-mono">
+                <span className="text-white/60">المفتاح الحالي:</span>
+                <span className="text-purple-300">{keys.replicate.keyIdentifier}</span>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-white/70 block">
+                توكن Replicate السري (r8_...):
+              </label>
+              <div className="relative">
+                <input
+                  type={showSecrets.replicate ? 'text' : 'password'}
+                  value={inputs.replicate}
+                  onChange={e => setInputs(prev => ({ ...prev, replicate: e.target.value }))}
+                  placeholder="r8_..."
+                  className="w-full bg-black/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-purple-400 font-mono text-left"
+                  dir="ltr"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSecrets(prev => ({ ...prev, replicate: !prev.replicate }))}
+                  className="absolute left-3 top-2.5 text-xs text-white/40 hover:text-white"
+                >
+                  {showSecrets.replicate ? 'إخفاء 👁️' : 'إظهار 👁️'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => handleSaveKey('replicate')}
+                disabled={!inputs.replicate}
+                className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs shadow-md transition-all disabled:opacity-30"
+              >
+                حفظ وتشفير مفتاح Replicate
               </button>
             </div>
           </div>

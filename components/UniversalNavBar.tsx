@@ -3,12 +3,26 @@ import { AppView, GoogleUserProfile } from '../types';
 import { logoutGoogle } from '../services/googleAuthService';
 
 export const VIEW_METADATA: Record<AppView, { ar: string; en: string; icon: string; phase?: string; desc: string }> = {
+  home: {
+    ar: 'الرئيسية ومعرض الأعمال',
+    en: 'Home & Portfolio',
+    icon: '🏠',
+    phase: 'الرئيسية',
+    desc: 'معرض أعمال المنصة، باقات الاشتراك، والملف الشخصي للمستأجر',
+  },
   creator_studio: {
     ar: 'استوديو التوليد السينمائي',
     en: 'Creator Studio',
     icon: '👑',
     phase: 'المرحلة 4',
     desc: 'محرك التوليد الموحد فائق الدقة بضغطة واحدة',
+  },
+  omni_crm_studio: {
+    ar: 'Omni CRM & الحملات',
+    en: 'Omnichannel CRM & Ads',
+    icon: '🎯',
+    phase: 'جديد P0',
+    desc: 'إدارة وتجزئة العملاء، ربط المخزون الحي، ونشر الحملات الإعلانية',
   },
   execution_erp_studio: {
     ar: 'المحاسبة والمخزون والـ ERP',
@@ -115,19 +129,28 @@ export const VIEW_METADATA: Record<AppView, { ar: string; en: string; icon: stri
     phase: 'Phase 6',
     desc: 'العقل التشاركي وتبادل المعرفة بين مستأجري المنصة',
   },
+  public_store: {
+    ar: 'المتجر والمنيو الرقمي (QR)',
+    en: 'Public Store & QR Menu',
+    icon: '🛍️',
+    phase: 'المتجر العام',
+    desc: 'كتالوج رقمي مباشر للعملاء والطلبات السريعة عبر الواتساب',
+  },
 };
 
 const PRIMARY_NAV_STUDIOS: AppView[] = [
   'creator_studio',
+  'omni_crm_studio',
   'execution_erp_studio',
   'business_brain_studio',
   'integrations_vault_studio',
   'social_hub_studio',
-  'photoshoot_director',
   'marketing_studio',
+  'campaign_studio',
+  'photoshoot_director',
   'storyboard_studio',
   'edit_studio',
-  'campaign_studio',
+  'plan_studio',
   'prompt_studio',
   'voice_over_studio',
 ];
@@ -140,6 +163,7 @@ interface UniversalNavBarProps {
   canGoBack: boolean;
   googleUser: GoogleUserProfile | null;
   onOpenGoogleSignIn: () => void;
+  onOpenChatAgent?: () => void;
 }
 
 export const UniversalNavBar: React.FC<UniversalNavBarProps> = ({
@@ -150,6 +174,7 @@ export const UniversalNavBar: React.FC<UniversalNavBarProps> = ({
   canGoBack,
   googleUser,
   onOpenGoogleSignIn,
+  onOpenChatAgent,
 }) => {
   const currentMeta = VIEW_METADATA[currentView] || VIEW_METADATA.creator_studio;
   const prevMeta = previousView ? VIEW_METADATA[previousView] : null;
@@ -221,6 +246,18 @@ export const UniversalNavBar: React.FC<UniversalNavBarProps> = ({
 
           {/* User Auth & Profile Actions */}
           <div className="flex items-center gap-2 flex-shrink-0 mr-auto">
+            {onOpenChatAgent && (
+              <button
+                type="button"
+                onClick={onOpenChatAgent}
+                className="px-3 py-1.5 rounded-2xl bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/35 hover:to-blue-600/35 border border-cyan-400/40 text-cyan-300 text-xs font-black shadow-md transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                title="تحدث مع وكيل المبيعات والتفاوض الذكي (Phase 2)"
+              >
+                <span className="text-sm animate-pulse">💼</span>
+                <span className="hidden md:inline">وكيل المبيعات</span>
+              </button>
+            )}
+
             {googleUser ? (
               <div className="flex items-center gap-2 bg-white/5 border border-white/10 p-1.5 rounded-2xl">
                 <img
@@ -273,7 +310,13 @@ export const UniversalNavBar: React.FC<UniversalNavBarProps> = ({
               <button
                 key={studioId}
                 type="button"
-                onClick={() => onNavigate(studioId)}
+                onClick={() => {
+                  if (!googleUser && studioId !== 'home') {
+                    onOpenGoogleSignIn();
+                    return;
+                  }
+                  onNavigate(studioId);
+                }}
                 className={`px-3 py-1.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95 flex-shrink-0 cursor-pointer ${
                   isActive
                     ? 'bg-gradient-to-r from-purple-600 via-[var(--color-accent)] to-cyan-500 text-white shadow-lg shadow-purple-900/40 border border-purple-400/40 font-black'

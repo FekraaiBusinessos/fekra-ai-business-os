@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { PhotoshootResult, ShotType } from '../types';
+import { resolveImageSrc } from '../utils';
 import SmartEnhanceButton from './SmartEnhanceButton';
 
 const LoadingSpinner = () => (
@@ -26,7 +27,8 @@ const ImageResult: React.FC<{
         if (!result.image) return;
         setIsDownloading(true);
         const img = new Image();
-        img.src = `data:${result.image.mimeType};base64,${result.image.base64}`;
+        img.crossOrigin = 'anonymous';
+        img.src = resolveImageSrc(result.image);
         img.onload = () => {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
@@ -65,8 +67,9 @@ const ImageResult: React.FC<{
                     </div>
                 ) : result.image ? (
                     <img 
-                        src={`data:${result.image.mimeType};base64,${result.image.base64}`} 
+                        src={resolveImageSrc(result.image)} 
                         alt={shotType} 
+                        referrerPolicy="no-referrer"
                         className="object-contain w-full h-full cursor-pointer"
                         onClick={() => setIsFullViewOpen(true)}
                     />
@@ -129,7 +132,7 @@ const ImageResult: React.FC<{
 
             {isFullViewOpen && result.image && createPortal(
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[9999] p-4 animate-in fade-in cursor-zoom-out" onClick={() => setIsFullViewOpen(false)}>
-                    <img src={`data:${result.image.mimeType};base64,${result.image.base64}`} className="max-w-full max-h-full object-contain shadow-2xl" />
+                    <img src={resolveImageSrc(result.image)} referrerPolicy="no-referrer" className="max-w-full max-h-full object-contain shadow-2xl" />
                 </div>,
                 document.body
             )}

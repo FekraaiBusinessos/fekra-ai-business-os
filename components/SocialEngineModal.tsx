@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ImageFile, StudioWorkItem, SocialPlatformId, SocialConnectedAccount } from '../types';
+import { resolveImageSrc } from '../utils';
 import { smartEnhanceText } from '../services/geminiService';
 import { 
   getSocialAccounts, 
@@ -154,9 +155,9 @@ export const SocialEngineModal: React.FC<SocialEngineModalProps> = ({
   };
 
   const handleDownloadAsset = () => {
-    if (!activeImage?.base64) return;
+    if (!activeImage) return;
     const link = document.createElement('a');
-    link.href = `data:${activeImage.mimeType || 'image/png'};base64,${activeImage.base64}`;
+    link.href = resolveImageSrc(activeImage);
     link.download = `fekra-social-${currentAccount.id}-${Date.now().toString().slice(-4)}.png`;
     document.body.appendChild(link);
     link.click();
@@ -466,8 +467,9 @@ export const SocialEngineModal: React.FC<SocialEngineModalProps> = ({
                 <div className="aspect-square w-full bg-neutral-950 flex items-center justify-center overflow-hidden">
                   {activeImage?.base64 ? (
                     <img
-                      src={`data:${activeImage.mimeType || 'image/png'};base64,${activeImage.base64}`}
+                      src={resolveImageSrc(activeImage)}
                       alt="Post Media"
+                      referrerPolicy="no-referrer"
                       className="w-full h-full object-cover"
                     />
                   ) : work?.audio?.base64 ? (

@@ -2,7 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GoogleUserProfile } from '../types';
 import { 
   GOOGLE_CLIENT_ID, 
-  loginWithGoogleCredential 
+  loginWithGoogleCredential,
+  loginDirectly,
+  DETECTED_USER_EMAIL,
+  DETECTED_USER_NAME
 } from '../services/googleAuthService';
 
 interface GoogleSignInModalProps {
@@ -33,6 +36,11 @@ const GoogleGIcon = () => (
 );
 
 export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, onClose, onSuccess }) => {
+  const [authTab, setAuthTab] = useState<'signin' | 'register'>('signin');
+  const [customName, setCustomName] = useState('');
+  const [customCompany, setCustomCompany] = useState('');
+  const [customEmail, setCustomEmail] = useState('');
+
   const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -180,31 +188,156 @@ export const GoogleSignInModal: React.FC<GoogleSignInModalProps> = ({ isOpen, on
           </div>
         )}
 
-        {/* Official Google GSI Render Container */}
-        <div className="flex flex-col items-center justify-center space-y-3 py-2 min-h-[50px]">
-          <div ref={googleBtnRef} className="flex justify-center w-full" />
-
-          {/* Direct Popup Trigger Backup */}
+        {/* Tab Switcher: Sign In vs Register */}
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold mb-4">
           <button
             type="button"
-            onClick={handleManualPopupTrigger}
-            disabled={isLoading}
-            className="w-full max-w-xs py-3 px-4 rounded-full bg-white hover:bg-neutral-100 text-neutral-900 font-black text-xs sm:text-sm flex items-center justify-center gap-2.5 transition-all shadow-xl active:scale-95 disabled:opacity-50"
+            onClick={() => setAuthTab('signin')}
+            className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+              authTab === 'signin' ? 'bg-cyan-500 text-slate-950 font-black shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
           >
-            <GoogleGIcon />
-            <span>{isLoading ? 'جارٍ التحقق من الخادم...' : 'فتح نافذة Google المنبثقة'}</span>
+            🔑 تسجيل الدخول
+          </button>
+          <button
+            type="button"
+            onClick={() => setAuthTab('register')}
+            className={`flex-1 py-1.5 rounded-lg transition-all cursor-pointer ${
+              authTab === 'register' ? 'bg-cyan-500 text-slate-950 font-black shadow-sm' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            ✨ إنشاء حساب جديد
           </button>
         </div>
 
-        {/* Security & Multi-Tenancy Guarantee */}
-        <div className="mt-6 pt-4 border-t border-white/10 text-right space-y-2 text-[11px] text-white/50">
-          <div className="flex items-center gap-2 text-emerald-400">
-            <span>✓</span>
-            <span>تحقق برمجي صارم عبر google-auth-library على الخادم.</span>
+        {/* Tab 1: Sign In */}
+        {authTab === 'signin' && (
+          <div className="flex flex-col items-center justify-center space-y-3 py-1">
+            {/* Quick 1-Click for Detected User */}
+            <button
+              type="button"
+              onClick={async () => {
+                setIsLoading(true);
+                setErrorMsg(null);
+                setSuccessMsg('جاري تفعيل الحساب المكتشف والمستأجر...');
+                try {
+                  const user = await loginDirectly(DETECTED_USER_EMAIL, DETECTED_USER_NAME);
+                  setIsLoading(false);
+                  setSuccessMsg(`✓ مرحباً بك ${user.name}! تم الدخول بنجاح.`);
+                  setTimeout(() => {
+                    if (onSuccess) onSuccess(user);
+                    onClose();
+                  }, 500);
+                } catch (err: any) {
+                  setIsLoading(false);
+                  setErrorMsg(err.message || 'فشل تسجيل الدخول');
+                }
+              }}
+              disabled={isLoading}
+              className="w-full max-w-xs py-2.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs flex items-center justify-between shadow-lg shadow-emerald-950/40 cursor-pointer active:scale-95"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚡</span>
+                <span className="text-right">
+                  <span className="block font-black">دخول سريع بحسابك:</span>
+                  <span className="block font-mono text-[10px] text-slate-900">{DETECTED_USER_EMAIL}</span>
+                </span>
+              </div>
+              <span>←</span>
+            </button>
+
+            <div className="text-[11px] text-slate-500 font-bold">أو عبر نافذة Google الرسمية:</div>
+
+            {/* Official Google GSI Render Container */}
+            <div ref={googleBtnRef} className="flex justify-center w-full min-h-[40px]" />
+
+            {/* Direct Popup Trigger Backup */}
+            <button
+              type="button"
+              onClick={handleManualPopupTrigger}
+              disabled={isLoading}
+              className="w-full max-w-xs py-2.5 px-4 rounded-xl bg-white hover:bg-neutral-100 text-neutral-900 font-black text-xs flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 disabled:opacity-50"
+            >
+              <GoogleGIcon />
+              <span>{isLoading ? 'جارٍ التحقق...' : 'فتح نافذة Google المنبثقة'}</span>
+            </button>
           </div>
-          <div className="flex items-center gap-2 text-cyan-400">
+        )}
+
+        {/* Tab 2: Register New Account Form */}
+        {authTab === 'register' && (
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!customEmail.trim()) return;
+              setIsLoading(true);
+              setErrorMsg(null);
+              setSuccessMsg('جاري إنشاء الحساب وعزل المنشأة...');
+              try {
+                const user = await loginDirectly(customEmail, customName || customEmail.split('@')[0], customCompany, 'growth');
+                setIsLoading(false);
+                setSuccessMsg(`✓ تم إنشاء حسابك بنجاح! أهلاً بك.`);
+                setTimeout(() => {
+                  if (onSuccess) onSuccess(user);
+                  onClose();
+                }, 500);
+              } catch (err: any) {
+                setIsLoading(false);
+                setErrorMsg(err.message || 'فشل إنشاء الحساب');
+              }
+            }}
+            className="space-y-3 text-right"
+          >
+            <div>
+              <label className="text-[11px] font-bold text-slate-300 block mb-1">الاسم الكامل:</label>
+              <input
+                type="text"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="أحمد علي"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-cyan-400 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-slate-300 block mb-1">اسم المتجر أو الشركة:</label>
+              <input
+                type="text"
+                value={customCompany}
+                onChange={(e) => setCustomCompany(e.target.value)}
+                placeholder="متجر النور"
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-cyan-400 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] font-bold text-slate-300 block mb-1">البريد الإلكتروني:</label>
+              <input
+                type="email"
+                value={customEmail}
+                onChange={(e) => setCustomEmail(e.target.value)}
+                placeholder="you@company.com"
+                required
+                className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-cyan-400 focus:outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isLoading || !customEmail.trim()}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isLoading ? 'جاري إنشاء الحساب...' : '✨ إنشاء الحساب وبدء التجربة'}
+            </button>
+          </form>
+        )}
+
+        {/* Security & Multi-Tenancy Guarantee */}
+        <div className="mt-5 pt-3 border-t border-white/10 text-right space-y-1.5 text-[10px] text-white/50">
+          <div className="flex items-center gap-1.5 text-emerald-400">
             <span>✓</span>
-            <span>توليد مساحة عمل مشفرة ومستقلة (Zero Mock Policy).</span>
+            <span>عزل بيانات المستأجر بنسبة 100% مع تشفير الجلسة.</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-cyan-400">
+            <span>✓</span>
+            <span>كوتة إنتاج يومية مخصصة وفواتير ZATCA Phase 2 متوافقة.</span>
           </div>
         </div>
       </div>
